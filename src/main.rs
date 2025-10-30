@@ -9,351 +9,447 @@ use rand::Rng;
 
 use std::time::Duration;
 
-fn main() -> Result<(), std::io::Error> {
-    // Initial state
-    let mut x: usize = 0;
-    let mut y: usize = 0;
-    let width: usize = 10;
-    let height: usize = 10;
-    let mut map: Vec<Vec<u16>> = vec![vec![0; width]; height];
-    let mut checked_map: Vec<Vec<u16>> = vec![vec![0; width]; height];
-    let mine_count: u16 = 20;
+///
+/// Struct that acts as a game of minesweeper. Created / managed by the TUI
+/// 
+struct MinesweeperGame {
+    // Info
+    x: i8,         // Current x position
+    y: i8,         // Current y position
+    width: i8,     // Board width 
+    height: i8,    // Board height
+    m_count: i8,   // Number of mines on the board
+    state: MSGState, // Whether or not the game is over
 
+    // Visual
+    flag_char: char,
+    mine_char: char,
+    tile_char: char,
+
+    // Maps
+    mine_map: Vec<Vec<i8>>,      // 0 = no mine, 1 = mine
+    flag_map: Vec<Vec<i8>>,      // 0 = no flag, 1 = flag
+    m_count_map: Vec<Vec<i8>>,   // Each space has the # of mines around it
+    uncovered_map: Vec<Vec<i8>>, // 0 = covered, 1 = uncovered. Uncovered tiles cannot be flagged.
+}
+
+#[derive(PartialEq)]
+enum MSGState {
+    Starting,
+    Running,
+    Win,
+    Loss
+}
+
+use std::fmt::Display;
+use std::fmt::Formatter;
+impl Display for MSGState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            &MSGState::Starting => {
+                write!(f, "Starting")
+            }
+            &MSGState::Running => {
+                write!(f, "Running")
+            }
+            &MSGState::Loss => {
+                write!(f, "Loss")
+            }
+            &MSGState::Win => {
+                write!(f, "Win")
+            }
+        }
+    }
+}
+
+// Initialization
+impl MinesweeperGame {
+    ///
+    /// Creates a new instance of the game
+    /// 
+    fn new(width: i8, height: i8, m_count: i8) -> MinesweeperGame {
+        MinesweeperGame {
+            x: 0,
+            y: 0,
+            width: width,
+            height: height,
+            m_count: m_count,
+            state: MSGState::Starting,
+
+            flag_char: '󰈿',
+            mine_char: '󰷚',
+            tile_char: '󰆢',
+
+            mine_map: vec![vec![0; width as usize]; height as usize],
+            flag_map: vec![vec![0; width as usize]; height as usize],
+            m_count_map: vec![vec![0; width as usize]; height as usize],
+            uncovered_map: vec![vec![0; width as usize]; height as usize],
+        }
+    }
+    ///
+    /// Populate the mines on the board by updating `mine_map`
+    /// 
+    fn populate_mine_map(&mut self) {
+        for _ in 0..self.m_count {
+            let mut rng = rand::rng();
+            loop {
+                let rand_y = rng.random_range(0..self.height);
+                let rand_x = rng.random_range(0..self.width);
+                // !(self.x == rand_x && self.y == rand_y)
+                // Ensures that when generating the board we do not put a mine where the player chose to start 
+                if self.mine_map[rand_y as usize][rand_x as usize] != 1 && !(self.x == rand_x && self.y == rand_y) {
+                    self.mine_map[rand_y as usize][rand_x as usize] = 1;
+                    break;
+                }
+            }
+        }
+    }
+    /// 
+    /// Populate the mine counts on the board by updating `m_count_map`
+    /// 
+    fn populate_m_count_map(&mut self) {
+        for i in 0..self.height {
+            for j in 0..self.width {
+                let mine_count = Self::get_mine_count(self, j, i);
+                self.m_count_map[i as usize][j as usize] = mine_count;
+            }
+        }
+    }
+    ///
+    /// Get the number of mines surrounding the given position
+    /// 
+    fn get_mine_count(&mut self, x: i8, y: i8) -> i8 {
+        let surrounding = vec![
+            (x - 1, y - 1), // Top left
+            (x, y - 1),     // Top
+            (x + 1, y - 1), // Top right
+            (x - 1, y),     // Left
+            (x + 1, y),     // Right
+            (x - 1, y + 1), // Bottom left
+            (x, y + 1),     // Bottom
+            (x + 1, y + 1)  // Bottom right
+        ];
+        let mut mine_count = 0;
+        for coord in surrounding {
+            if coord.0 >= 0 && coord.0 < self.width && coord.1 >= 0 && coord.1 < self.height {
+                mine_count += self.mine_map[coord.1 as usize][coord.0 as usize];
+            }
+        }
+        return mine_count;
+    }
+}
+
+// Visualization
+impl MinesweeperGame {
+    ///
+    /// Prints the board with a map of the mines. 
+    /// Used for visualizing mine generation in testing.
+    /// "M" = mine, " " = no mine
+    /// 
+    fn print_board_mine_map(&self) {
+        execute!(std::io::stdout(), MoveTo(0, 0)).ok();
+        print!("{}[2J", 27 as char);
+
+        print!("╔");
+        for _ in 0..(self.width*3) {
+            print!("═");
+        }
+        print!("╗\n");
+        for i in 0..self.height {
+            print!("║");
+            for j in 0..(self.width) {
+                if self.mine_map[i as usize][j as usize] == 1 {
+                    print!("[{}]", self.mine_char);
+                } else {
+                    print!("[ ]");
+                }
+            }
+            print!("║\n");
+        }
+        print!("╚");
+        for _ in 0..(self.width*3) {
+            print!("═");
+        }
+        print!("╝\n");
+    }
+    ///
+    /// Prints the board with the calculated neighboring mine count of each position.
+    /// If a position contains a mine, it prints "M" instead.
+    /// Used for testing the `get_mine_count` algorithm
+    ///
+    fn print_board_m_count_map(&self) {
+        execute!(std::io::stdout(), MoveTo(0, 0)).ok();
+        print!("{}[2J", 27 as char);
+
+        print!("╔");
+        for _ in 0..(self.width*3) {
+            print!("═");
+        }
+        print!("╗\n");
+        for i in 0..self.height {
+            print!("║");
+            for j in 0..(self.width) {
+                if self.mine_map[i as usize][j as usize] == 1 {
+                    print!("[{}]", self.mine_char);
+                } else {
+                    print!("[{}]", self.m_count_map[i as usize][j as usize]);
+                }
+            }
+            print!("║\n");
+        }
+        print!("╚");
+        for _ in 0..(self.width*3) {
+            print!("═");
+        }
+        print!("╝\n");
+    }
+    ///
+    /// Prints a blank board with no visual information.
+    /// Used when starting an actual game to set the initial scene
+    /// 
+    fn print_board_normal(&self) {
+        execute!(std::io::stdout(), MoveTo(0, 0)).ok();
+        print!("{}[2J", 27 as char);
+
+        print!("╔");
+        for _ in 0..(self.width*3) {
+            print!("═");
+        }
+        print!("╗\n");
+        for _ in 0..self.height {
+            print!("║");
+            for _ in 0..(self.width) {
+                print!("[{}]", self.tile_char);
+            }
+            print!("║\n");
+        }
+        print!("╚");
+        for _ in 0..(self.width*3) {
+            print!("═");
+        }
+        print!("╝\n");
+    }
+}
+
+// Game logic
+impl MinesweeperGame {
+    ///
+    /// Handle the start of the game, in which the player has to get a check in before the mines can generate, in order to avoid random start losses 
+    /// 
+    fn handle_start(&mut self, key_code: KeyCode) {
+        match key_code {
+            KeyCode::Up => {
+                if self.y > 0 {
+                    self.y -= 1;
+                    self.position_cursor(self.x, self.y);
+                }
+            }
+            KeyCode::Down => {
+                if self.y < self.height {
+                    self.y += 1;
+                    self.position_cursor(self.x, self.y);
+                }
+            }
+            KeyCode::Left => {
+                if self.x > 0 {
+                    self.x -= 1;
+                    self.position_cursor(self.x, self.y);
+                }
+            }
+            KeyCode::Right => {
+                if self.x < self.width {
+                    self.x += 1;
+                    self.position_cursor(self.x, self.y);
+                }
+            }
+            KeyCode::Char('a') => {
+                // Generate the board, update the game state, and check
+                self.populate_mine_map();
+                self.populate_m_count_map();
+                self.state = MSGState::Running;
+                self.check();
+            }
+            _ => {}
+        }
+    }
+    ///
+    /// Handle user input for things like checking, flagging, movement, etc.
+    /// 
+    fn handle_input(&mut self, key_code: KeyCode) {
+        match key_code {
+            KeyCode::Up => {
+                if self.y > 0 {
+                    self.y -= 1;
+                    self.position_cursor(self.x, self.y);
+                }
+            }
+            KeyCode::Down => {
+                if self.y < self.height {
+                    self.y += 1;
+                    self.position_cursor(self.x, self.y);
+                }
+            }
+            KeyCode::Left => {
+                if self.x > 0 {
+                    self.x -= 1;
+                    self.position_cursor(self.x, self.y);
+                }
+            }
+            KeyCode::Right => {
+                if self.x < self.width {
+                    self.x += 1;
+                    self.position_cursor(self.x, self.y);
+                }
+            }
+            KeyCode::Char('a') => {
+                // Check
+                self.check();
+            }
+            KeyCode::Char('d') => {
+                // Flag
+                if !self.uncovered_map[self.y as usize][self.x as usize] == 1 {
+                    if self.flag_map[self.y as usize][self.x as usize] == 0 {
+                        self.flag_map[self.y as usize][self.x as usize] = 1;
+                        print!("{}", self.flag_char);
+                        self.position_cursor(self.x, self.y);
+                    } else {
+                        self.flag_map[self.y as usize][self.x as usize] = 0;
+                        print!("{}", self.tile_char);
+                        self.position_cursor(self.x, self.y);
+                    }
+                }
+            }
+            KeyCode::Char('q') => {
+                // Quit the game
+                execute!(std::io::stdout(), MoveTo(0, 0)).ok();
+                print!("{}[2J", 27 as char);
+                self.state = MSGState::Loss;
+            }
+            _ => {}
+        }
+    }
+    ///
+    /// Handle the checking action
+    /// 
+    fn check(&mut self) {
+        // See if there is a mine where we checked. If so, we lose.
+        if self.mine_map[self.y as usize][self.x as usize] == 1 {
+            self.state = MSGState::Loss;
+        }
+        // TODO handle checking a non-mine space and update maps accordingly
+        // TODO 1. If the mine count != 0, show mine count
+        // TODO 2. If the mine count == 0, reveal spaces around and their mine counts
+        // TODO 3. If revealed spaces have mine count == 0, repeat 2. at that space
+    }
+    ///
+    /// Position cursor relative to board position
+    /// 
+    fn position_cursor(&self, x: i8, y: i8) {
+        let mut new_x: u16 = 2;
+        let mut new_y: u16 = 1;
+
+        new_x += 3 * x as u16;
+        new_y += y as u16;
+
+        execute!(std::io::stdout(), MoveTo(new_x, new_y)).ok();
+    }
+}
+
+fn main() -> Result<(), std::io::Error> {
     // Terminal setup
     execute!(std::io::stdout(), SetCursorStyle::SteadyBlock).ok();
 
-    // Generate mines randomly
-    populate_mines(&mut map, mine_count);
+    // Create game object and run game
+    let height: i8 = 10;
+    let width: i8 = 10;
+    let mines: i8 = 20;
+    let mut msg = MinesweeperGame::new(width, height, mines);
+
+    // Populate the mines
+    msg.populate_mine_map();
+    msg.populate_m_count_map();
 
     // Print board to the screen
-    // _print_board(width, height);
-    _print_board_mine_map(width, height, &map);
-    // _print_board_mine_count(width, height, &map);
+    msg.print_board_m_count_map();
+    // msg.print_board_mine_map();
+    // msg.print_board_normal();
 
     // Position the cursor
-    position_cursor(x, y);
+    msg.position_cursor(msg.x, msg.y);
 
-    // Interaction loop
-    loop {
+    // Ensure that the user gets a click in before generating the board
+    while msg.state == MSGState::Starting {
         if event::poll(Duration::from_millis(250))? {
             match event::read().unwrap() {
                 Event::Key(key_event) => {
                     if key_event.kind == KeyEventKind::Press {
-                        match key_event.code {
-                            KeyCode::Up => {
-                                if y != 0 {
-                                    y -= 1;
-                                    position_cursor(x, y);
-                                }
-                            }
-                            KeyCode::Down => {
-                                if y != (height - 1) {
-                                    y += 1;
-                                    position_cursor(x, y);
-                                }
-                            }
-                            KeyCode::Right => {
-                                if x != (width - 1) {
-                                    x += 1;
-                                    position_cursor(x, y);
-                                }
-                            }
-                            KeyCode::Left => {
-                                if x != 0 {
-                                    x -= 1;
-                                    position_cursor(x, y);
-                                }
-                            }
-                            KeyCode::Char(c) => {
-                                match c {
-                                    'q' => {
-                                        // Quit
-                                        print!("{}[2J", 27 as char);
-                                        execute!(std::io::stdout(), MoveTo(0, 0)).ok();
-                                        break;
-                                    }
-                                    'a' => {
-                                        // Click
-                                        let res = get_click_result(x, y, &map, &mut checked_map);
-                                        if res == 1 {
-                                            // Game is over, you lose!
-                                            print!("{}[2J", 27 as char);
-                                            execute!(std::io::stdout(), MoveTo(0, 1)).ok();
-                                            println!("Game is over. You lose!");
-                                            break;
-                                        }
-                                    }
-                                    'd' => {
-                                        // Flag
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            _ => {}
-                        }
+                        msg.handle_start(key_event.code);
                     }
                 }
                 _ => {}
             }
         }
     }
+
+    // Main game loop
+    while msg.state == MSGState::Running {
+        if event::poll(Duration::from_millis(250))? {
+            match event::read().unwrap() {
+                Event::Key(key_event) => {
+                    if key_event.kind == KeyEventKind::Press {
+                        msg.handle_input(key_event.code);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    execute!(std::io::stdout(), MoveTo(0, 0)).ok();
+    print!("{}[2J", 27 as char);
+    match msg.state {
+        MSGState::Win => {
+            println!("Congratulations, you won!");
+        }
+        MSGState::Loss => {
+            println!("Yikes... you lost.");
+        }
+        _ => {
+            // Something has gone terribly wrong to get here
+            panic!("Error: Game ended with invalid state: {}", msg.state);
+        }
+    }
+
+    // TODO show game stats?
+    
     Ok(())
 }
 
-///
-/// Prints a blank board with no visual information.
-/// Used when starting an actual game to set the initial scene
-/// 
-fn _print_board(width: usize, height: usize) {
-    execute!(std::io::stdout(), MoveTo(0, 0)).ok();
-    print!("{}[2J", 27 as char);
-
-    print!("╔");
-    for _ in 0..(width*3) {
-        print!("═");
-    }
-    print!("╗\n");
-    for _ in 0..height {
-        print!("║");
-        for _ in 0..(width) {
-            print!("[#]");
-        }
-        print!("║\n");
-    }
-    print!("╚");
-    for _ in 0..(width*3) {
-        print!("═");
-    }
-    print!("╝\n");
-}
-
-///
-/// Prints the board with a 0 and 1 map of the mines. 
-/// Used for visualizing mine generation in testing.
-/// 1 - mine, 0 - no mine
-/// 
-fn _print_board_mine_map(width: usize, height: usize, map: &Vec<Vec<u16>>) {
-    execute!(std::io::stdout(), MoveTo(0, 0)).ok();
-    print!("{}[2J", 27 as char);
-
-    print!("╔");
-    for _ in 0..(width*3) {
-        print!("═");
-    }
-    print!("╗\n");
-    for i in 0..height {
-        print!("║");
-        for j in 0..(width) {
-            if map[i][j] == 1 {
-                print!("[M]");
-            } else {
-                print!("[ ]");
-            }
-        }
-        print!("║\n");
-    }
-    print!("╚");
-    for _ in 0..(width*3) {
-        print!("═");
-    }
-    print!("╝\n");
-}
-
-///
-/// Prints the board with the calculated neighboring mine count of each position.
-/// Used for testing the neighboring mine count algorithm
-/// 
-fn _print_board_mine_count(width: usize, height: usize, map: &Vec<Vec<u16>>) {
-    execute!(std::io::stdout(), MoveTo(0, 0)).ok();
-    print!("{}[2J", 27 as char);
-
-    print!("╔");
-    for _ in 0..(width*3) {
-        print!("═");
-    }
-    print!("╗\n");
-    for i in 0..height {
-        print!("║");
-        for j in 0..(width) {
-            if map[i][j] == 1 {
-                print!("[M]");
-            } else {
-                print!("[{}]", get_mine_count(j, i, map));
-            }
-        }
-        print!("║\n");
-    }
-    print!("╚");
-    for _ in 0..(width*3) {
-        print!("═");
-    }
-    print!("╝\n");
-}
-
-///
-/// Randomly populate board with mines.
-/// TODO Get a better algorithm for placing mines
-/// 
-fn populate_mines(map: &mut Vec<Vec<u16>>, mine_count: u16) {
-    let mut rng = rand::rng();
-    let mut added: u16 = 0;
-    while added < mine_count {
-        let rand_y = rng.random_range(0..map.len());
-        let rand_x = rng.random_range(0..map[rand_y].len());
-        if map[rand_y][rand_x] != 1 {
-            map[rand_y][rand_x] = 1;
-            added += 1;
-        }
-    }
-}
-
-///
-/// Position cursor relative to board position
-/// 
-fn position_cursor(x: usize, y: usize) {
-    let mut new_x: u16 = 2;
-    let mut new_y: u16 = 1;
-
-    new_x += 3 * x as u16;
-    new_y += y as u16;
-
-    execute!(std::io::stdout(), MoveTo(new_x, new_y)).ok();
-}
-
-///
-/// Get the mine count at a position on the board
-/// 
-fn get_mine_count(x: usize, y: usize, map: &Vec<Vec<u16>>) -> u16 {
-    let x_left_edge: bool =  if x > 0 { false } else { true };
-    let x_right_edge: bool = if x < map[y].len() - 1 { false } else { true };
-    let y_top_edge: bool = if y > 0 { false } else { true };
-    let y_bottom_edge: bool = if y < map.len() - 1 { false } else { true };
-
-    let mine_count: u16;
-    if x_left_edge {
-        if y_top_edge {
-            mine_count = map[y][x + 1] + map[y + 1][x] + map[y + 1][x + 1];
-        } else if y_bottom_edge { 
-            mine_count = map[y][x + 1] + map[y - 1][x] + map[y - 1][x + 1];
-        } else {
-            mine_count = map[y][x + 1] + map[y - 1][x] + map[y - 1][x + 1] + map[y + 1][x] + map[y + 1][x + 1];
-        }
-    } else if x_right_edge {
-        if y_top_edge {
-            mine_count = map[y][x - 1] + map[y + 1][x] + map[y + 1][x - 1];
-        } else if y_bottom_edge { 
-            mine_count = map[y][x - 1] + map[y - 1][x] + map[y - 1][x - 1];
-        } else {
-            mine_count = map[y][x - 1] + map[y - 1][x] + map[y - 1][x - 1] + map[y + 1][x] + map[y + 1][x - 1];
-        }
-    } else {
-        if y_top_edge {
-            mine_count = map[y][x - 1] + map[y][x + 1] + map[y + 1][x] + map[y + 1][x - 1] + map[y + 1][x + 1];
-        } else if y_bottom_edge { 
-            mine_count = map[y][x - 1] + map[y][x + 1] + map[y - 1][x] + map[y - 1][x - 1] + map[y - 1][x + 1];
-        } else {
-            mine_count = map[y][x - 1] + map[y][x + 1] + map[y - 1][x] + map[y - 1][x - 1] + map[y - 1][x + 1] + map[y + 1][x] + map[y + 1][x - 1] + map[y + 1][x + 1];
-        }
-    }
-    return mine_count;
-}
-
-///
-/// Performs the following actions after a click based on what is at the current position:
-/// 1. If the position is a mine, you lose the game
-/// 2. If the position is not a mine, runs a visual update to reveal mine count at that location
-/// 
-fn get_click_result(x: usize, y: usize, map: &Vec<Vec<u16>>, checked_map: &mut Vec<Vec<u16>>) -> u16 {
-    if map[y][x] == 1 {
-        return 1;    
-    } else {
-        visual_update(x, y, map, checked_map);
-        position_cursor(x, y);
-        return 0;
-    }
-}
-
-///
-/// Visually updates the space surrounding the current position, based on the mine count
-/// 
-fn visual_update(x: usize, y: usize, map: &Vec<Vec<u16>>, checked_map: &mut Vec<Vec<u16>>) {
-    checked_map[x][y] = 1;
-    let mine_count = get_mine_count(x, y, map);
-    if mine_count != 0 {
-        match mine_count {
-            1 => {
-                print!("\x1b[1;34m");
-            }
-            2 => {
-                print!("\x1b[1;32m");
-            }
-            3 => {
-                print!("\x1b[1;31m");
-            }
-            4 => {
-                print!("\x1b[1;35m");
-            }
-            5 => {
-                print!("\x1b[1;33m");
-            }
-            6 => {
-                print!("\x1b[1;36m");
-            }
-            7 => {
-                print!("\x1b[1;37m");
-            }
-            8 => {
-                print!("\x1b[1;30m");
-            }
-            _ => {} // Impossible cases
-        }
-        print!("{}\x1b[0m", mine_count);
-        position_cursor(x, y); // Reposition after printing to re-align properly
-    } else {
-        print!(" ");
-        position_cursor(x, y);
-        // Update surrounding positions
-        let x_left_edge: bool =  if x > 0 { false } else { true };
-        let x_right_edge: bool = if x < map[y].len() - 1 { false } else { true };
-        let y_top_edge: bool = if y > 0 { false } else { true };
-        let y_bottom_edge: bool = if y < map.len() - 1 { false } else { true };
-
-        let surrounding: Vec<(usize, usize)>;
-        if x_left_edge {
-            if y_top_edge {
-                surrounding = vec![(x + 1, y), (x, y + 1), (x + 1, y + 1)];
-            } else if y_bottom_edge { 
-                surrounding = vec![(x + 1, y), (x, y - 1), (x + 1, y - 1)];
-            } else {
-                surrounding = vec![(x + 1, y), (x, y - 1), (x + 1, y - 1), (x, y + 1), (x + 1, y + 1)];
-            }
-        } else if x_right_edge {
-            if y_top_edge {
-                surrounding = vec![(x - 1, y), (x, y + 1), (x - 1, y + 1)];
-            } else if y_bottom_edge { 
-                surrounding = vec![(x - 1, y), (x, y - 1), (x - 1, y - 1)];
-            } else {
-                surrounding = vec![(x - 1, y), (x, y - 1), (x - 1, y - 1), (x, y + 1), (x - 1, y + 1)];
-            }
-        } else {
-            if y_top_edge {
-                surrounding = vec![(x - 1, y), (x + 1, y), (x, y + 1), (x - 1, y + 1), (x + 1, y + 1)];
-            } else if y_bottom_edge { 
-                surrounding = vec![(x - 1, y), (x + 1, y), (x, y - 1), (x - 1, y - 1), (x + 1, y - 1)];
-            } else {
-                surrounding = vec![(x - 1, y), (x + 1, y), (x - 1, y - 1), (x, y - 1), (x + 1, y - 1), (x - 1, y + 1), (x, y + 1), (x + 1, y + 1)];
-            }
-        }
-
-        for pos in surrounding {
-            if checked_map[pos.1][pos.0] != 1 {
-                position_cursor(pos.0, pos.1);
-                print!("C");
-                // checked_map[pos.1][pos.0] = 1;
-                // visual_update(pos.0, pos.1, map, checked_map);
-            }
-        }
-
-        position_cursor(x, y);
-    }
-}
+//         match mine_count {
+//             1 => {
+//                 print!("\x1b[1;34m");
+//             }
+//             2 => {
+//                 print!("\x1b[1;32m");
+//             }
+//             3 => {
+//                 print!("\x1b[1;31m");
+//             }
+//             4 => {
+//                 print!("\x1b[1;35m");
+//             }
+//             5 => {
+//                 print!("\x1b[1;33m");
+//             }
+//             6 => {
+//                 print!("\x1b[1;36m");
+//             }
+//             7 => {
+//                 print!("\x1b[1;37m");
+//             }
+//             8 => {
+//                 print!("\x1b[1;30m");
+//             }
+//             _ => {} // Impossible cases
+//         }
+//         print!("{}\x1b[0m", mine_count);

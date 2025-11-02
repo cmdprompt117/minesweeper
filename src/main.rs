@@ -14,11 +14,11 @@ use std::time::Duration;
 /// 
 struct MinesweeperGame {
     // Info
-    x: i8,           // Current x position
-    y: i8,           // Current y position
-    width: i8,       // Board width 
-    height: i8,      // Board height
-    m_count: i8,     // Number of mines on the board
+    x: i16,           // Current x position
+    y: i16,           // Current y position
+    width: i16,       // Board width 
+    height: i16,      // Board height
+    m_count: i16,     // Number of mines on the board
     state: MSGState, // Whether or not the game is over
 
     // Visual
@@ -28,10 +28,10 @@ struct MinesweeperGame {
     tile_char: char,
 
     // Maps
-    mine_map: Vec<Vec<i8>>,      // 0 = no mine, 1 = mine
-    flag_map: Vec<Vec<i8>>,      // 0 = no flag, 1 = flag
-    m_count_map: Vec<Vec<i8>>,   // Each space has the # of mines around it
-    uncovered_map: Vec<Vec<i8>>, // 0 = covered, 1 = uncovered. Uncovered tiles cannot be flagged.
+    mine_map: Vec<Vec<i16>>,      // 0 = no mine, 1 = mine
+    flag_map: Vec<Vec<i16>>,      // 0 = no flag, 1 = flag
+    m_count_map: Vec<Vec<i16>>,   // Each space has the # of mines around it
+    uncovered_map: Vec<Vec<i16>>, // 0 = covered, 1 = uncovered. Uncovered tiles cannot be flagged.
 }
 
 #[derive(PartialEq)]
@@ -68,7 +68,7 @@ impl MinesweeperGame {
     ///
     /// Creates a new instance of the game
     /// 
-    fn new(width: i8, height: i8, m_count: i8) -> MinesweeperGame {
+    fn new(width: i16, height: i16, m_count: i16) -> MinesweeperGame {
         MinesweeperGame {
             x: 0,
             y: 0,
@@ -119,7 +119,7 @@ impl MinesweeperGame {
     ///
     /// Get the number of mines surrounding the given position
     /// 
-    fn get_mine_count(&mut self, x: i8, y: i8) -> i8 {
+    fn get_mine_count(&mut self, x: i16, y: i16) -> i16 {
         let surrounding = vec![
             (x - 1, y - 1), // Top left
             (x, y - 1),     // Top
@@ -233,7 +233,7 @@ impl MinesweeperGame {
     ///
     /// Prints the mine count at a position with a color based on the count
     /// 
-    fn print_colored_count(&self, mine_count: i8) {
+    fn print_colored_count(&self, mine_count: i16) {
         match mine_count {
             1 => {
                 print!("\x1b[1;34m");
@@ -266,7 +266,7 @@ impl MinesweeperGame {
     ///
     /// Used to visually update the colors of an entire square after checking
     /// 
-    fn visual_update_space(&self, x: i8, y: i8, mine_count: i8) {
+    fn visual_update_space(&self, x: i16, y: i16, mine_count: i16) {
         // 0. Get the canon position
         let pos = self.get_canon_pos(x, y);
         // 1. Move to the character before it on the x-axis
@@ -431,7 +431,7 @@ impl MinesweeperGame {
             self.position_cursor(self.x, self.y);
             // Get surrounding spaces
             let surrounding = self.get_surrounding(self.x, self.y);
-            let mut to_check: Vec<(i8, i8)> = vec![];
+            let mut to_check: Vec<(i16, i16)> = vec![];
             for space in surrounding {
                 if self.uncovered_map[space.1 as usize][space.0 as usize] != 1 {
                     if self.m_count_map[space.1 as usize][space.0 as usize] == 0 {
@@ -468,8 +468,8 @@ impl MinesweeperGame {
         }
         // Get all the surrounding and make a list of those which are flagged
         let surrounding = self.get_surrounding(self.x, self.y);
-        let mut num_flagged: i8 = 0;
-        let mut flagged: Vec<(i8, i8)> = vec![];
+        let mut num_flagged: i16 = 0;
+        let mut flagged: Vec<(i16, i16)> = vec![];
         for space in &surrounding {
             if self.flag_map[space.1 as usize][space.0 as usize] == 1 {
                 num_flagged += 1;
@@ -494,11 +494,11 @@ impl MinesweeperGame {
         self.position_cursor(self.x, self.y);
     }
     ///
-    /// Gets the surrounding spaces of a given coordinate as a `Vec<(i8, i8)>`
+    /// Gets the surrounding spaces of a given coordinate as a `Vec<(i16, i16)>`
     /// 
-    fn get_surrounding(&self, x: i8, y: i8) -> Vec<(i8, i8)> {
+    fn get_surrounding(&self, x: i16, y: i16) -> Vec<(i16, i16)> {
         // TODO make this more efficient?
-        let mut surroundings: Vec<(i8, i8)> = vec![];
+        let mut surroundings: Vec<(i16, i16)> = vec![];
         // Left space
         if x > 0 {
             surroundings.push((x - 1, y));
@@ -536,7 +536,7 @@ impl MinesweeperGame {
     ///
     /// Position cursor relative to board position
     /// 
-    fn position_cursor(&self, x: i8, y: i8) {
+    fn position_cursor(&self, x: i16, y: i16) {
         let coord = self.get_canon_pos(x, y);
         execute!(std::io::stdout(), MoveTo(coord.0 as u16, coord.1 as u16)).ok();
     }
@@ -544,7 +544,7 @@ impl MinesweeperGame {
     /// Gets the cursor location that position_cursor will place the cursor at.
     /// This is split into a different function so it can be used also to fix background colors on space check
     /// 
-    fn get_canon_pos(&self, x: i8, y: i8) -> (i8, i8) {
+    fn get_canon_pos(&self, x: i16, y: i16) -> (i16, i16) {
         return ((3 * x) + 2, y + 1);
     }
     ///
@@ -580,73 +580,71 @@ impl MinesweeperGame {
     }
 }
 
+// Game controller
+impl MinesweeperGame {
+    fn run_game(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
+        // Create game object
+        let mut msg = MinesweeperGame::new(width, height, mine_count);
+        // Display board size
+        msg.print_board_normal();
+        // Position the cursor
+        msg.position_cursor(msg.x, msg.y); 
+        // Ensure that the user gets a click in before generating the board
+        while msg.state == MSGState::Starting {
+            if event::poll(Duration::from_millis(250))? {
+                match event::read().unwrap() {
+                    Event::Key(key_event) => {
+                        if key_event.kind == KeyEventKind::Press {
+                            msg.handle_start(key_event.code);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // Reset board visually
+        execute!(std::io::stdout(), MoveTo(0,0)).ok();
+        msg.print_board_normal();
+        // We have already checked the position we started at so make sure to check it when we move there
+        msg.position_cursor(msg.x, msg.y);
+        msg.check();
+        // Main game loop
+        while msg.state == MSGState::Running {
+            if event::poll(Duration::from_millis(250))? {
+                match event::read().unwrap() {
+                    Event::Key(key_event) => {
+                        if key_event.kind == KeyEventKind::Press {
+                            msg.handle_input(key_event.code);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // Handle ending game state
+        execute!(std::io::stdout(), MoveTo(0, (msg.height + 2) as u16)).ok();
+        match msg.state {
+            MSGState::Win => {
+                println!("Congratulations, you won!");
+            }
+            MSGState::Loss => {
+                println!("Yikes... you lost.");
+            }
+            _ => {
+                // Something has gone terribly wrong to get here
+                panic!("Error: Game ended with invalid state: {}", msg.state);
+            }
+        }
+
+        Ok(())
+    }
+}
+
 fn main() -> Result<(), std::io::Error> {
     // Terminal setup
     execute!(std::io::stdout(), SetCursorStyle::SteadyBlock).ok();
-
-    // Create game object and run game
-    let height: i8 = 9;
-    let width: i8 = 9;
-    let mines: i8 = 10;
-    let mut msg = MinesweeperGame::new(width, height, mines);
-
-    // Populate the mines
-    msg.populate_mine_map();
-    msg.populate_m_count_map();
-
-    // Print board to the screen
-    msg.print_board_normal();
-
-    // Position the cursor
-    msg.position_cursor(msg.x, msg.y);
-
-    // Ensure that the user gets a click in before generating the board
-    while msg.state == MSGState::Starting {
-        if event::poll(Duration::from_millis(250))? {
-            match event::read().unwrap() {
-                Event::Key(key_event) => {
-                    if key_event.kind == KeyEventKind::Press {
-                        msg.handle_start(key_event.code);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    execute!(std::io::stdout(), MoveTo(0,0)).ok();
-    msg.print_board_normal();
-    // We have already checked the position we started at so make sure to check it when we move there
-    msg.position_cursor(msg.x, msg.y);
-    msg.check();
-
-    // Main game loop
-    while msg.state == MSGState::Running {
-        if event::poll(Duration::from_millis(250))? {
-            match event::read().unwrap() {
-                Event::Key(key_event) => {
-                    if key_event.kind == KeyEventKind::Press {
-                        msg.handle_input(key_event.code);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    execute!(std::io::stdout(), MoveTo(0, (msg.height + 2) as u16)).ok();
-    match msg.state {
-        MSGState::Win => {
-            println!("Congratulations, you won!");
-        }
-        MSGState::Loss => {
-            println!("Yikes... you lost.");
-        }
-        _ => {
-            // Something has gone terribly wrong to get here
-            panic!("Error: Game ended with invalid state: {}", msg.state);
-        }
-    }
+    // Run game
+    let _ = MinesweeperGame::run_game(9, 9, 10);
 
     // TODO show game stats?
     

@@ -14,11 +14,11 @@ use std::time::Duration;
 /// 
 struct MinesweeperGame {
     // Info
-    x: i8,         // Current x position
-    y: i8,         // Current y position
-    width: i8,     // Board width 
-    height: i8,    // Board height
-    m_count: i8,   // Number of mines on the board
+    x: i8,           // Current x position
+    y: i8,           // Current y position
+    width: i8,       // Board width 
+    height: i8,      // Board height
+    m_count: i8,     // Number of mines on the board
     state: MSGState, // Whether or not the game is over
 
     // Visual
@@ -161,7 +161,7 @@ impl MinesweeperGame {
                 if self.mine_map[i as usize][j as usize] == 1 {
                     print!("[{}]", self.mine_char);
                 } else {
-                    print!("[ ]");
+                    print!("[{}]", self.tile_char);
                 }
             }
             print!("║\n");
@@ -219,7 +219,7 @@ impl MinesweeperGame {
         for _ in 0..self.height {
             print!("║");
             for _ in 0..(self.width) {
-                print!("[{}]", self.tile_char);
+                print!("\x1b[0;90m[{}]\x1b[0m", self.tile_char);
             }
             print!("║\n");
         }
@@ -228,6 +228,39 @@ impl MinesweeperGame {
             print!("═");
         }
         print!("╝\n");
+    }
+    ///
+    /// Prints the mine count at a position with a color based on the count
+    /// 
+    fn print_colored_count(&self, mine_count: i8) {
+        match mine_count {
+            1 => {
+                print!("\x1b[1;34m");
+            }
+            2 => {
+                print!("\x1b[1;32m");
+            }
+            3 => {
+                print!("\x1b[1;31m");
+            }
+            4 => {
+                print!("\x1b[1;35m");
+            }
+            5 => {
+                print!("\x1b[1;33m");
+            }
+            6 => {
+                print!("\x1b[1;36m");
+            }
+            7 => {
+                print!("\x1b[1;37m");
+            }
+            8 => {
+                print!("\x1b[1;30m");
+            }
+            _ => {} // Impossible cases
+        }
+        print!("{}\x1b[0m", mine_count);
     }
 }
 
@@ -245,7 +278,7 @@ impl MinesweeperGame {
                 }
             }
             KeyCode::Down => {
-                if self.y < self.height {
+                if self.y < self.height - 1 {
                     self.y += 1;
                     self.position_cursor(self.x, self.y);
                 }
@@ -257,7 +290,7 @@ impl MinesweeperGame {
                 }
             }
             KeyCode::Right => {
-                if self.x < self.width {
+                if self.x < self.width - 1{
                     self.x += 1;
                     self.position_cursor(self.x, self.y);
                 }
@@ -284,7 +317,7 @@ impl MinesweeperGame {
                 }
             }
             KeyCode::Down => {
-                if self.y < self.height {
+                if self.y < self.height - 1 {
                     self.y += 1;
                     self.position_cursor(self.x, self.y);
                 }
@@ -296,25 +329,27 @@ impl MinesweeperGame {
                 }
             }
             KeyCode::Right => {
-                if self.x < self.width {
+                if self.x < self.width - 1 {
                     self.x += 1;
                     self.position_cursor(self.x, self.y);
                 }
             }
             KeyCode::Char('a') => {
                 // Check
-                self.check();
+                if self.flag_map[self.y as usize][self.x as usize] != 1 {
+                    self.check();
+                }
             }
             KeyCode::Char('d') => {
                 // Flag
-                if !self.uncovered_map[self.y as usize][self.x as usize] == 1 {
+                if self.uncovered_map[self.y as usize][self.x as usize] == 0 {
                     if self.flag_map[self.y as usize][self.x as usize] == 0 {
                         self.flag_map[self.y as usize][self.x as usize] = 1;
                         print!("{}", self.flag_char);
                         self.position_cursor(self.x, self.y);
                     } else {
                         self.flag_map[self.y as usize][self.x as usize] = 0;
-                        print!("{}", self.tile_char);
+                        print!("\x1b[0;90m{}\x1b[0m", self.tile_char);
                         self.position_cursor(self.x, self.y);
                     }
                 }
@@ -332,14 +367,87 @@ impl MinesweeperGame {
     /// Handle the checking action
     /// 
     fn check(&mut self) {
+        let temp_x = self.x;
+        let temp_y = self.y;
         // See if there is a mine where we checked. If so, we lose.
         if self.mine_map[self.y as usize][self.x as usize] == 1 {
             self.state = MSGState::Loss;
         }
-        // TODO handle checking a non-mine space and update maps accordingly
-        // TODO 1. If the mine count != 0, show mine count
-        // TODO 2. If the mine count == 0, reveal spaces around and their mine counts
-        // TODO 3. If revealed spaces have mine count == 0, repeat 2. at that space
+        // If there is not a mine, check the mine count on the current space
+        let current_mine_count = self.m_count_map[self.y as usize][self.x as usize];
+        // Mark the uncovered map so that we know we have checked this spot already
+        self.uncovered_map[self.y as usize][self.x as usize] = 1;
+        // 1. If the mine count != 0, show mine count
+        if current_mine_count != 0 {
+            self.print_colored_count(current_mine_count);
+            self.position_cursor(self.x, self.y);
+        }
+        // 2. If the mine count == 0, show mine count and check the surrounding spaces as well
+        else if current_mine_count == 0 {
+            print!(" ");
+            self.position_cursor(self.x, self.y);
+            // Get surrounding spaces
+            let surrounding = self.get_surrounding(self.x, self.y);
+            for space in surrounding {
+                if self.uncovered_map[space.1 as usize][space.0 as usize] != 1 {
+                    if self.m_count_map[space.1 as usize][space.0 as usize] == 0 {
+                        self.position_cursor(space.0, space.1);
+                        print!(" ");
+                        self.position_cursor(space.0, space.1);
+                        self.x = space.0;
+                        self.y = space.1;
+                        self.check();
+                    } else {
+                        self.position_cursor(space.0, space.1);
+                        self.print_colored_count(self.m_count_map[space.1 as usize][space.0 as usize]);
+                        self.position_cursor(self.x, self.y);
+                    }
+                }
+            }
+        }
+        self.position_cursor(temp_x, temp_y);
+        self.x = temp_x;
+        self.y = temp_y;
+    }
+    ///
+    /// Gets the surrounding spaces of a given coordinate as a `Vec<(i8, i8)>`
+    /// 
+    fn get_surrounding(&self, x: i8, y: i8) -> Vec<(i8, i8)> {
+        // TODO make this more efficient?
+        let mut surroundings: Vec<(i8, i8)> = vec![];
+        // Left space
+        if x > 0 {
+            surroundings.push((x - 1, y));
+        }
+        // Right space
+        if x < self.width - 1 {
+            surroundings.push((x + 1, y));
+        }
+        // Top space
+        if y > 0 {
+            surroundings.push((x, y - 1));
+        }
+        // Bottom space
+        if y < self.height - 1 {
+            surroundings.push((x, y + 1));
+        }
+        // Top left
+        if x > 0 && y > 0 {
+            surroundings.push((x - 1, y - 1));
+        }
+        // Top right
+        if x < self.width - 1 && y > 0 {
+            surroundings.push((x + 1, y - 1));
+        }
+        // Bottom left
+        if x > 0 && y < self.height - 1 {
+            surroundings.push((x - 1, y + 1));
+        }
+        // Bottom right
+        if x < self.width - 1 && y < self.height - 1 {
+            surroundings.push((x + 1, y + 1));
+        }
+        return surroundings;
     }
     ///
     /// Position cursor relative to board position
@@ -362,7 +470,7 @@ fn main() -> Result<(), std::io::Error> {
     // Create game object and run game
     let height: i8 = 10;
     let width: i8 = 10;
-    let mines: i8 = 20;
+    let mines: i8 = 10;
     let mut msg = MinesweeperGame::new(width, height, mines);
 
     // Populate the mines
@@ -370,9 +478,7 @@ fn main() -> Result<(), std::io::Error> {
     msg.populate_m_count_map();
 
     // Print board to the screen
-    msg.print_board_m_count_map();
-    // msg.print_board_mine_map();
-    // msg.print_board_normal();
+    msg.print_board_normal();
 
     // Position the cursor
     msg.position_cursor(msg.x, msg.y);
@@ -390,6 +496,16 @@ fn main() -> Result<(), std::io::Error> {
             }
         }
     }
+
+    // TODO remove these. Debug
+    execute!(std::io::stdout(), MoveTo(0,0)).ok();
+    print!("{}[2J", 27 as char);
+    // msg.print_board_m_count_map();
+    // msg.print_board_mine_map();
+    msg.print_board_normal();
+    // We have already checked the position we started at so make sure to check it when we move there
+    msg.position_cursor(msg.x, msg.y);
+    msg.check();
 
     // Main game loop
     while msg.state == MSGState::Running {
@@ -424,32 +540,3 @@ fn main() -> Result<(), std::io::Error> {
     
     Ok(())
 }
-
-//         match mine_count {
-//             1 => {
-//                 print!("\x1b[1;34m");
-//             }
-//             2 => {
-//                 print!("\x1b[1;32m");
-//             }
-//             3 => {
-//                 print!("\x1b[1;31m");
-//             }
-//             4 => {
-//                 print!("\x1b[1;35m");
-//             }
-//             5 => {
-//                 print!("\x1b[1;33m");
-//             }
-//             6 => {
-//                 print!("\x1b[1;36m");
-//             }
-//             7 => {
-//                 print!("\x1b[1;37m");
-//             }
-//             8 => {
-//                 print!("\x1b[1;30m");
-//             }
-//             _ => {} // Impossible cases
-//         }
-//         print!("{}\x1b[0m", mine_count);

@@ -264,6 +264,31 @@ impl MinesweeperGame {
         print!("{}\x1b[0m", mine_count);
     }
     ///
+    /// Used to visually update the colors of an entire square after checking
+    /// 
+    fn visual_update_space(&self, x: i8, y: i8, mine_count: i8) {
+        // 0. Get the canon position
+        let pos = self.get_canon_pos(x, y);
+        // 1. Move to the character before it on the x-axis
+        execute!(std::io::stdout(), MoveTo((pos.0 - 1) as u16, (pos.1) as u16)).ok();
+        // 2. Print space info based on mine count
+        if mine_count == 0 {
+            // Empty space
+            print!("\x1b[0;30m[ ]\x1b[0m");
+        } else if mine_count == -1 {
+            // Mine
+            print!("\x1b[0;30;100m[{}]\x1b[0m", self.mine_char);
+        } else if mine_count == -2 {
+            // Flag
+            print!("\x1b[0;30;100m[{}]\x1b[0m", self.flag_char);
+        } else {
+            // Space with mine count
+            print!("\x1b[0;30m[\x1b[0m");
+            self.print_colored_count(mine_count);
+            print!("\x1b[0;30m]\x1b[0m");
+        }
+    }
+    ///
     /// Shows all of the mine locations. Used for showing mines after a loss
     /// 
     fn show_mines(&self) {
@@ -271,9 +296,7 @@ impl MinesweeperGame {
             for j in 0..self.width {
                 if self.mine_map[i as usize][j as usize] == 1 {
                     if self.flag_map[i as usize][j as usize] != 1 {
-                        self.position_cursor(j, i);
-                        print!("{}", self.mine_char);
-                        self.position_cursor(j, i);
+                        self.visual_update_space(j, i, -1);
                     }
                 }
             }
@@ -363,11 +386,11 @@ impl MinesweeperGame {
                 if self.uncovered_map[self.y as usize][self.x as usize] == 0 {
                     if self.flag_map[self.y as usize][self.x as usize] == 0 {
                         self.flag_map[self.y as usize][self.x as usize] = 1;
-                        print!("{}", self.flag_char);
+                        print!("\x1b[0;100m{}\x1b[0m", self.flag_char);
                         self.position_cursor(self.x, self.y);
                     } else {
                         self.flag_map[self.y as usize][self.x as usize] = 0;
-                        print!("\x1b[0;90m{}\x1b[0m", self.tile_char);
+                        print!("\x1b[0;90;100m{}\x1b[0m", self.tile_char);
                         self.position_cursor(self.x, self.y);
                     }
                 }
@@ -399,12 +422,12 @@ impl MinesweeperGame {
         self.uncovered_map[self.y as usize][self.x as usize] = 1;
         // 1. If the mine count != 0, show mine count
         if current_mine_count != 0 {
-            self.print_colored_count(current_mine_count);
+            self.visual_update_space(self.x, self.y, current_mine_count);
             self.position_cursor(self.x, self.y);
         }
         // 2. If the mine count == 0, show mine count and check the surrounding spaces as well
         else if current_mine_count == 0 {
-            print!(" ");
+            self.visual_update_space(self.x, self.y, current_mine_count);
             self.position_cursor(self.x, self.y);
             // Get surrounding spaces
             let surrounding = self.get_surrounding(self.x, self.y);
@@ -412,13 +435,12 @@ impl MinesweeperGame {
             for space in surrounding {
                 if self.uncovered_map[space.1 as usize][space.0 as usize] != 1 {
                     if self.m_count_map[space.1 as usize][space.0 as usize] == 0 {
-                        self.position_cursor(space.0, space.1);
-                        print!(" ");
+                        self.visual_update_space(self.x, self.y, current_mine_count);
                         self.position_cursor(space.0, space.1);
                         to_check.push((space.0, space.1));
                     } else {
                         self.position_cursor(space.0, space.1);
-                        self.print_colored_count(self.m_count_map[space.1 as usize][space.0 as usize]);
+                        self.visual_update_space(space.0, space.1, self.m_count_map[space.1 as usize][space.0 as usize]);
                         self.position_cursor(self.x, self.y);
                     }
                     self.uncovered_map[space.1 as usize][space.0 as usize] = 1;
@@ -513,9 +535,7 @@ impl MinesweeperGame {
                 for j in 0..self.width {
                     if self.mine_map[i as usize][j as usize] == 1 {
                         if self.flag_map[i as usize][j as usize] != 1 {
-                            self.position_cursor(j, i);
-                            print!("{}", self.flag_char);
-                            self.position_cursor(j, i);
+                            self.visual_update_space(j, i, -2);
                         }
                     }
                 }
@@ -529,9 +549,9 @@ fn main() -> Result<(), std::io::Error> {
     execute!(std::io::stdout(), SetCursorStyle::SteadyBlock).ok();
 
     // Create game object and run game
-    let height: i8 = 20;
-    let width: i8 = 20;
-    let mines: i8 = 50;
+    let height: i8 = 9;
+    let width: i8 = 9;
+    let mines: i8 = 10;
     let mut msg = MinesweeperGame::new(width, height, mines);
 
     // Populate the mines

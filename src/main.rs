@@ -1,6 +1,6 @@
 use crossterm::{
     cursor::{
-        MoveTo, SetCursorStyle   
+        MoveTo, SetCursorStyle, Hide, Show
     },
     event::{self, Event, KeyCode, KeyEventKind},
     execute
@@ -8,6 +8,7 @@ use crossterm::{
 use rand::Rng;
 
 use std::time::Duration;
+use std::io::Write;
 
 ///
 /// Struct that acts as a game of minesweeper. Created / managed by the TUI
@@ -19,7 +20,8 @@ struct MinesweeperGame {
     width: i16,       // Board width 
     height: i16,      // Board height
     m_count: i16,     // Number of mines on the board
-    state: MSGState, // Whether or not the game is over
+    state: MSGState,  // Whether or not the game is over
+    reset: bool,      // Whether or not to reset the game
 
     // Visual
     flag_char: char,
@@ -39,7 +41,8 @@ enum MSGState {
     Starting,
     Running,
     Win,
-    Loss
+    Loss,
+    Done
 }
 
 use std::fmt::Display;
@@ -59,6 +62,9 @@ impl Display for MSGState {
             &MSGState::Win => {
                 write!(f, "Win")
             }
+            &MSGState::Done => {
+                write!(f, "Done")
+            }
         }
     }
 }
@@ -76,6 +82,7 @@ impl MinesweeperGame {
             height: height,
             m_count: m_count,
             state: MSGState::Starting,
+            reset: false,
 
             flag_char: '󰈿',
             mine_char: '󰷚',
@@ -211,7 +218,7 @@ impl MinesweeperGame {
     fn print_board_normal(&self) {
         execute!(std::io::stdout(), MoveTo(0, 0)).ok();
         print!("{}[2J", 27 as char);
-
+        println!("q - check | w - flag | r - reset | m - menu");
         print!("╔");
         for _ in 0..(self.width*3) {
             print!("═");
@@ -374,32 +381,39 @@ impl MinesweeperGame {
                 }
             }
             KeyCode::Char('q') => {
-                // Chord
-                if self.flag_map[self.y as usize][self.x as usize] != 1 {
-                    self.chord();
+                if self.state != MSGState::Win && self.state != MSGState::Loss {
+                    // Chord
+                    if self.flag_map[self.y as usize][self.x as usize] != 1 {
+                        self.chord();
+                    }
+                    // Check for win condition
+                    self.check_win_condition();
                 }
-                // Check for win condition
-                self.check_win_condition();
             }
             KeyCode::Char('w') => {
-                // Flag
-                if self.uncovered_map[self.y as usize][self.x as usize] == 0 {
-                    if self.flag_map[self.y as usize][self.x as usize] == 0 {
-                        self.flag_map[self.y as usize][self.x as usize] = 1;
-                        print!("\x1b[0;100m{}\x1b[0m", self.flag_char);
-                        self.position_cursor(self.x, self.y);
-                    } else {
-                        self.flag_map[self.y as usize][self.x as usize] = 0;
-                        print!("\x1b[0;90;100m{}\x1b[0m", self.tile_char);
-                        self.position_cursor(self.x, self.y);
+                if self.state != MSGState::Win && self.state != MSGState::Loss {
+                    // Flag
+                    if self.uncovered_map[self.y as usize][self.x as usize] == 0 {
+                        if self.flag_map[self.y as usize][self.x as usize] == 0 {
+                            self.flag_map[self.y as usize][self.x as usize] = 1;
+                            print!("\x1b[0;100m{}\x1b[0m", self.flag_char);
+                            self.position_cursor(self.x, self.y);
+                        } else {
+                            self.flag_map[self.y as usize][self.x as usize] = 0;
+                            print!("\x1b[0;37;100m{}\x1b[0m", self.tile_char);
+                            self.position_cursor(self.x, self.y);
+                        }
                     }
                 }
             }
-            KeyCode::Char('e') => {
-                // Quit the game
-                execute!(std::io::stdout(), MoveTo(0, 0)).ok();
-                print!("{}[2J", 27 as char);
-                self.state = MSGState::Loss;
+            KeyCode::Char('r') => {
+                // Reset the game
+                self.reset = true;
+                self.state = MSGState::Done;
+            }
+            KeyCode::Char('m') => {
+                // Quit to main menu
+                self.state = MSGState::Done;
             }
             _ => {}
         }
@@ -413,6 +427,9 @@ impl MinesweeperGame {
         // See if there is a mine where we checked. If so, we lose.
         if self.mine_map[self.y as usize][self.x as usize] == 1 {
             self.state = MSGState::Loss;
+            execute!(std::io::stdout(), MoveTo(0, (self.height + 3) as u16)).ok();
+            execute!(std::io::stdout(), Hide).ok();
+            println!("Sorry! You lose.");
             self.show_mines();
             return;
         }
@@ -545,7 +562,7 @@ impl MinesweeperGame {
     /// This is split into a different function so it can be used also to fix background colors on space check
     /// 
     fn get_canon_pos(&self, x: i16, y: i16) -> (i16, i16) {
-        return ((3 * x) + 2, y + 1);
+        return ((3 * x) + 2, y + 2);
     }
     ///
     /// Check win condition after clearing a space
@@ -576,6 +593,10 @@ impl MinesweeperGame {
                     }
                 }
             }
+            // Display win message
+            execute!(std::io::stdout(), MoveTo(0, (self.height + 3) as u16)).ok();
+            execute!(std::io::stdout(), Hide).ok();
+            println!("Congrats! You won!");
         }
     }
 }
@@ -584,6 +605,7 @@ impl MinesweeperGame {
 impl MinesweeperGame {
     fn run_game(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
         // Create game object
+        execute!(std::io::stdout(), Show).ok();
         let mut msg = MinesweeperGame::new(width, height, mine_count);
         // Display board size
         msg.print_board_normal();
@@ -609,7 +631,7 @@ impl MinesweeperGame {
         msg.position_cursor(msg.x, msg.y);
         msg.check();
         // Main game loop
-        while msg.state == MSGState::Running {
+        while msg.state != MSGState::Done {
             if event::poll(Duration::from_millis(250))? {
                 match event::read().unwrap() {
                     Event::Key(key_event) => {
@@ -621,32 +643,101 @@ impl MinesweeperGame {
                 }
             }
         }
-        // Handle ending game state
-        execute!(std::io::stdout(), MoveTo(0, (msg.height + 2) as u16)).ok();
-        match msg.state {
-            MSGState::Win => {
-                println!("Congratulations, you won!");
-            }
-            MSGState::Loss => {
-                println!("Yikes... you lost.");
-            }
-            _ => {
-                // Something has gone terribly wrong to get here
-                panic!("Error: Game ended with invalid state: {}", msg.state);
-            }
+        // Reset if need be
+        if msg.reset {
+            MinesweeperGame::run_game(width, height, mine_count)?;
         }
-
         Ok(())
     }
+}
+
+fn do_splash_text() {
+    //? Shoutout Patrick Gillespie: https://patorjk.com/software/taag
+    execute!(std::io::stdout(), MoveTo(0, 0)).ok();
+    print!("{}[2J", 27 as char);
+    println!(" _____    _____               _____                           ");
+    println!("| | | |  |_   _|___ ___ _____|   __|_ _ _ ___ ___ ___ ___ ___ ");
+    println!("|-   -|    | | | -_|  _|     |__   | | | | -_| -_| . | -_|  _|");
+    println!("|_|_|_|    |_| |___|_| |_|_|_|_____|_____|___|___|  _|___|_|  ");
+    println!("                                                 |_|          \n");
+
+    println!("1. Beginner (9x9, 10 mines)");
+    println!("2. Intermediate (16x16, 40 mines)");
+    println!("3. Expert (30x16, 99 mines)");
+    println!("4. Custom");
+    println!("5. Exit");
 }
 
 fn main() -> Result<(), std::io::Error> {
     // Terminal setup
     execute!(std::io::stdout(), SetCursorStyle::SteadyBlock).ok();
-    // Run game
-    let _ = MinesweeperGame::run_game(9, 9, 10);
+    execute!(std::io::stdout(), Hide).ok();
 
-    // TODO show game stats?
-    
+    do_splash_text();
+
+    loop {
+        if event::poll(Duration::from_millis(500))? {
+            match event::read().unwrap() {
+                Event::Key(key_event) => {
+                    if key_event.kind == KeyEventKind::Press {
+                        match key_event.code {
+                            KeyCode::Char('1') => {
+                                MinesweeperGame::run_game(9, 9, 10)?;
+                            }
+                            KeyCode::Char('2') => {
+                                MinesweeperGame::run_game(16, 16, 40)?;
+                            }
+                            KeyCode::Char('3') => {
+                                MinesweeperGame::run_game(30, 16, 99)?;
+                            }
+                            KeyCode::Char('4') => {
+                                execute!(std::io::stdout(), Show).ok();
+                                // Get user input
+                                let mut width: String = String::new();
+                                let mut height: String = String::new();
+                                let mut mines: String = String::new();
+                                print!("\n> Width: "); std::io::stdout().flush()?;
+                                std::io::stdin().read_line(&mut width)?;
+                                print!("> Height: "); std::io::stdout().flush()?;
+                                std::io::stdin().read_line(&mut height)?;
+                                print!("> Mines: "); std::io::stdout().flush()?;
+                                std::io::stdin().read_line(&mut mines)?;
+                                // Check if it is valid
+                                let width_n = width.trim().parse::<i16>();
+                                let height_n = height.trim().parse::<i16>();
+                                let mines_n = mines.trim().parse::<i16>();
+                                if width_n.is_err() || height_n.is_err() || mines_n.is_err() {
+                                    println!("\nX Error while reading input");
+                                    println!("{:?}\n{:?}\n{:?}\n", width_n, height_n, mines_n);
+                                    continue;
+                                }
+                                if width_n.clone().unwrap() < 0 || height_n.clone().unwrap() < 0 || mines_n.clone().unwrap() < 0 {
+                                    println!("\nX Please enter valid positive numbers");
+                                    continue;
+                                }
+                                // Check (by numerical constraints) if it is valid
+                                let space_n = width_n.clone().unwrap() * height_n.clone().unwrap();
+                                if mines_n.clone().unwrap() >= space_n - 1 {
+                                    println!("\nX Too many mines for the given space count ({} mines in {} spaces)", mines_n.clone().unwrap(), space_n);
+                                    continue;
+                                }
+
+                                // If valid, run the game
+                                MinesweeperGame::run_game(width_n.unwrap(), height_n.unwrap(), mines_n.unwrap())?;
+                            }
+                            KeyCode::Char('5') => {
+                                break;
+                            }
+                            _ => {}
+                        }
+                        do_splash_text();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    execute!(std::io::stdout(), MoveTo(0,0)).ok();
+    print!("{}[2J", 27 as char);
     Ok(())
 }

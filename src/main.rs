@@ -280,7 +280,7 @@ impl MinesweeperGame {
             print!("\x1b[0;30;100m[{}]\x1b[0m", self.mine_char);
         } else if mine_count == -2 {
             // Flag
-            print!("\x1b[0;30;100m[{}]\x1b[0m", self.flag_char);
+            print!("\x1b[0;37;100m[\x1b[0;100m{}\x1b[0;37;100m]\x1b[0m", self.flag_char);
         } else {
             // Space with mine count
             print!("\x1b[0;30m[\x1b[0m");
@@ -335,7 +335,7 @@ impl MinesweeperGame {
                     self.position_cursor(self.x, self.y);
                 }
             }
-            KeyCode::Char('a') => {
+            KeyCode::Char('q') => {
                 // Generate the board, update the game state, and check
                 self.populate_mine_map();
                 self.populate_m_count_map();
@@ -373,15 +373,15 @@ impl MinesweeperGame {
                     self.position_cursor(self.x, self.y);
                 }
             }
-            KeyCode::Char('a') => {
-                // Check
+            KeyCode::Char('q') => {
+                // Chord
                 if self.flag_map[self.y as usize][self.x as usize] != 1 {
-                    self.check();
+                    self.chord();
                 }
                 // Check for win condition
                 self.check_win_condition();
             }
-            KeyCode::Char('d') => {
+            KeyCode::Char('w') => {
                 // Flag
                 if self.uncovered_map[self.y as usize][self.x as usize] == 0 {
                     if self.flag_map[self.y as usize][self.x as usize] == 0 {
@@ -395,7 +395,7 @@ impl MinesweeperGame {
                     }
                 }
             }
-            KeyCode::Char('q') => {
+            KeyCode::Char('e') => {
                 // Quit the game
                 execute!(std::io::stdout(), MoveTo(0, 0)).ok();
                 print!("{}[2J", 27 as char);
@@ -456,6 +456,42 @@ impl MinesweeperGame {
         self.position_cursor(temp_x, temp_y);
         self.x = temp_x;
         self.y = temp_y;
+    }
+    ///
+    /// Handle the chording action
+    /// 
+    fn chord(&mut self) {
+        // If we are trying to chord on an unchecked space, jk jk, just check
+        if self.uncovered_map[self.y as usize][self.x as usize] == 0 {
+            self.check();
+            return;
+        }
+        // Get all the surrounding and make a list of those which are flagged
+        let surrounding = self.get_surrounding(self.x, self.y);
+        let mut num_flagged: i8 = 0;
+        let mut flagged: Vec<(i8, i8)> = vec![];
+        for space in &surrounding {
+            if self.flag_map[space.1 as usize][space.0 as usize] == 1 {
+                num_flagged += 1;
+                flagged.push(*space);
+            }
+        }
+        let temp_x = self.x;
+        let temp_y = self.y;
+        // If the number of flags matches the number of surrounding mines, we can chord.
+        if num_flagged == self.m_count_map[self.y as usize][self.x as usize] {
+            for space in surrounding {
+                if !flagged.contains(&space) {
+                    self.x = space.0;
+                    self.y = space.1;
+                    self.check();
+                }
+            }
+        }
+        // Reset to initial position
+        self.x = temp_x;
+        self.y = temp_y;
+        self.position_cursor(self.x, self.y);
     }
     ///
     /// Gets the surrounding spaces of a given coordinate as a `Vec<(i8, i8)>`

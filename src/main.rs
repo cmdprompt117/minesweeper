@@ -7,7 +7,7 @@ use crossterm::{
 };
 use rand::Rng;
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::io::Write;
 
 ///
@@ -20,12 +20,13 @@ struct MinesweeperGame {
     width: i16,       // Board width 
     height: i16,      // Board height
     m_count: i16,     // Number of mines on the board
+    f_count: i16,     // Number of flags on the board
     state: MSGState,  // Whether or not the game is over
     reset: bool,      // Whether or not to reset the game
+    time: Instant,    // Represents the instant that the game started, for getting game length
 
     // Visual
     flag_char: char,
-    #[allow(unused)] // Warning ignored because rust_analyzer is still yelling even though I AM using it.
     mine_char: char,
     tile_char: char,
 
@@ -81,8 +82,10 @@ impl MinesweeperGame {
             width: width,
             height: height,
             m_count: m_count,
+            f_count: 0,
             state: MSGState::Starting,
             reset: false,
+            time: Instant::now(),
 
             flag_char: '󰈿',
             mine_char: '󰷚',
@@ -219,6 +222,7 @@ impl MinesweeperGame {
         execute!(std::io::stdout(), MoveTo(0, 0)).ok();
         print!("{}[2J", 27 as char);
         println!("q - check | w - flag | r - reset | m - menu");
+        println!("FLAGS LEFT: {}", self.m_count);
         print!("╔");
         for _ in 0..(self.width*3) {
             print!("═");
@@ -309,6 +313,14 @@ impl MinesweeperGame {
             }
         }
     }
+    ///
+    /// Update the "mines left counter" when a flag is placed
+    ///
+    fn visual_update_f_count(&self) {
+        // Jump to where it is printed and update it
+        execute!(std::io::stdout(), MoveTo(0, 1)).ok();
+        print!("FLAGS LEFT: {}     ", self.m_count - self.f_count);
+    } 
 }
 
 // Game logic
@@ -394,13 +406,17 @@ impl MinesweeperGame {
                 if self.state != MSGState::Win && self.state != MSGState::Loss {
                     // Flag
                     if self.uncovered_map[self.y as usize][self.x as usize] == 0 {
-                        if self.flag_map[self.y as usize][self.x as usize] == 0 {
+                        if self.flag_map[self.y as usize][self.x as usize] == 0 && self.f_count < (self.m_count) {
                             self.flag_map[self.y as usize][self.x as usize] = 1;
                             print!("\x1b[0;100m{}\x1b[0m", self.flag_char);
+                            self.f_count += 1;
+                            self.visual_update_f_count();
                             self.position_cursor(self.x, self.y);
-                        } else {
+                        } else if self.flag_map[self.y as usize][self.x as usize] == 1 {
                             self.flag_map[self.y as usize][self.x as usize] = 0;
                             print!("\x1b[0;37;100m{}\x1b[0m", self.tile_char);
+                            self.f_count -= 1;
+                            self.visual_update_f_count();
                             self.position_cursor(self.x, self.y);
                         }
                     }
@@ -427,9 +443,10 @@ impl MinesweeperGame {
         // See if there is a mine where we checked. If so, we lose.
         if self.mine_map[self.y as usize][self.x as usize] == 1 {
             self.state = MSGState::Loss;
-            execute!(std::io::stdout(), MoveTo(0, (self.height + 3) as u16)).ok();
+            execute!(std::io::stdout(), MoveTo(0, (self.height + 4) as u16)).ok();
             execute!(std::io::stdout(), Hide).ok();
             println!("Sorry! You lose.");
+            println!("Game time: {}s", self.time.elapsed().as_secs());
             self.show_mines();
             return;
         }
@@ -562,7 +579,7 @@ impl MinesweeperGame {
     /// This is split into a different function so it can be used also to fix background colors on space check
     /// 
     fn get_canon_pos(&self, x: i16, y: i16) -> (i16, i16) {
-        return ((3 * x) + 2, y + 2);
+        return ((3 * x) + 2, y + 3);
     }
     ///
     /// Check win condition after clearing a space
@@ -593,10 +610,14 @@ impl MinesweeperGame {
                     }
                 }
             }
+            self.f_count = self.m_count;
+            self.visual_update_f_count();
             // Display win message
-            execute!(std::io::stdout(), MoveTo(0, (self.height + 3) as u16)).ok();
+            // TODO reconfigure this 4 to be a non-magic number
+            execute!(std::io::stdout(), MoveTo(0, (self.height + 4) as u16)).ok();
             execute!(std::io::stdout(), Hide).ok();
             println!("Congrats! You won!");
+            println!("Game time: {}s", self.time.elapsed().as_secs());
         }
     }
 }
@@ -610,7 +631,7 @@ impl MinesweeperGame {
         // Display board size
         msg.print_board_normal();
         // Position the cursor
-        msg.position_cursor(msg.x, msg.y); 
+        msg.position_cursor(msg.x, msg.y);
         // Ensure that the user gets a click in before generating the board
         while msg.state == MSGState::Starting {
             if event::poll(Duration::from_millis(250))? {

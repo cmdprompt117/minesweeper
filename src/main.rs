@@ -6,24 +6,31 @@ use crossterm::{
     execute
 };
 use rand::Rng;
+use serde::{Serialize, Deserialize};
+use serde_json;
 
 use std::time::{Duration, Instant};
 use std::io::Write;
+use std::fs;
 
 ///
 /// Struct that acts as a game of minesweeper. Created / managed by the TUI
 /// 
 struct MinesweeperGame {
     // Info
-    x: i16,           // Current x position
-    y: i16,           // Current y position
-    width: i16,       // Board width 
-    height: i16,      // Board height
-    m_count: i16,     // Number of mines on the board
-    f_count: i16,     // Number of flags on the board
-    state: MSGState,  // Whether or not the game is over
-    reset: bool,      // Whether or not to reset the game
-    time: Instant,    // Represents the instant that the game started, for getting game length
+    x: i16,          // Current x position
+    y: i16,          // Current y position
+    width: i16,      // Board width 
+    height: i16,     // Board height
+    m_count: i16,    // Number of mines on the board
+    f_count: i16,    // Number of flags on the board
+    state: MSGState, // Whether or not the game is over
+    reset: bool,     // Whether or not to reset the game
+    time: Instant,   // Represents the instant that the game started, for getting game length
+    clicks: u64,     // Number of checks / chords done in the game
+
+    // Records
+    save: Save, // Contains stats saved in save.json. Updated and saved after a game
 
     // Visual
     flag_char: char,
@@ -86,6 +93,9 @@ impl MinesweeperGame {
             state: MSGState::Starting,
             reset: false,
             time: Instant::now(),
+            clicks: 0,
+
+            save: Save::read_save(),
 
             flag_char: '󰈿',
             mine_char: '󰷚',
@@ -396,6 +406,7 @@ impl MinesweeperGame {
                 if self.state != MSGState::Win && self.state != MSGState::Loss {
                     // Chord
                     if self.flag_map[self.y as usize][self.x as usize] != 1 {
+                        self.clicks += 1;
                         self.chord();
                     }
                     // Check for win condition
@@ -448,6 +459,9 @@ impl MinesweeperGame {
             println!("Sorry! You lose.");
             println!("Game time: {}s", self.time.elapsed().as_secs());
             self.show_mines();
+            // Update save data
+            self.save.update_save(false, self.time.elapsed().as_secs(), self.clicks);
+            self.save.write_save();
             return;
         }
         // If there is not a mine, check the mine count on the current space
@@ -618,6 +632,9 @@ impl MinesweeperGame {
             execute!(std::io::stdout(), Hide).ok();
             println!("Congrats! You won!");
             println!("Game time: {}s", self.time.elapsed().as_secs());
+            // Update save data
+            self.save.update_save(true, self.time.elapsed().as_secs(), self.clicks);
+            self.save.write_save();
         }
     }
 }
@@ -693,9 +710,18 @@ fn main() -> Result<(), std::io::Error> {
     // Terminal setup
     execute!(std::io::stdout(), SetCursorStyle::SteadyBlock).ok();
     execute!(std::io::stdout(), Hide).ok();
-
+    // Check for save file and make sure it exists
+    if !fs::exists(".\\save.json").unwrap() {
+        match fs::write(".\\save.json", "{\"g_played\": 0, \"g_won\": 0, \"total_playtime\": 0, \"total_clicks\": 0}") {
+            Ok(_) => {}
+            Err(e) => {
+                println!("Error creating save file: {}", e);
+                return Ok(())
+            }
+        }
+    }
+    // Show start text and begin input loop
     do_splash_text();
-
     loop {
         if event::poll(Duration::from_millis(500))? {
             match event::read().unwrap() {
@@ -761,4 +787,67 @@ fn main() -> Result<(), std::io::Error> {
     execute!(std::io::stdout(), MoveTo(0,0)).ok();
     print!("{}[2J", 27 as char);
     Ok(())
+}
+
+#[derive(Serialize, Deserialize)]
+struct Save {
+    g_played: u32,       // Number of games played
+    g_won: u32,          // Number of games won
+    total_playtime: u64, // Number of seconds of game played
+    total_clicks: u64,   // Total number of "check" / "chord" actions all time. This one is for fun
+}
+
+impl Save {
+    ///
+    /// Reads save data from the file `save.json`.
+    /// 
+    fn read_save() -> Save {
+        // Get file contents
+        let file = fs::read_to_string(".\\save.json");
+        match file {
+            Ok(_) => {}
+            Err(e) => { 
+                println!("Error while opening save file: {}", e);
+                std::process::exit(1);
+            }
+        }
+        let file_con: Result<Save, _> = serde_json::from_str(file.unwrap().as_str());
+        match file_con {
+            Ok(s) => {
+                return s;
+            }
+            Err(e) => {
+                println!("Error while opening save file: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+    ///
+    /// Updates the stats of the Save object with those collected during the game
+    /// 
+    fn update_save(&mut self, won: bool, playtime: u64, clicks: u64) {
+        self.g_played += 1;
+        if won {
+            self.g_won += 1;
+        }
+        self.total_playtime += playtime;
+        self.total_clicks += clicks;
+    }
+    ///
+    /// Stores the Save data back into the file `save.json`.
+    /// 
+    fn write_save(&mut self) {
+        // TODO more error handling? It is a little pointless if the user <ctrl+c>'s 
+        // TODO and write errors are few and far between since we make sure the file exists
+        let new_save_data = serde_json::to_string(&self);
+        match new_save_data {
+            Ok(s) => {
+                fs::write(".\\save.json", s).ok();
+            }
+            Err(_) => {
+                // Could not write save data
+                return;
+            }
+        }
+    }
 }

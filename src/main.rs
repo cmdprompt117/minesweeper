@@ -711,8 +711,9 @@ fn main() -> Result<(), std::io::Error> {
     execute!(std::io::stdout(), SetCursorStyle::SteadyBlock).ok();
     execute!(std::io::stdout(), Hide).ok();
     // Check for save file and make sure it exists
-    if !fs::exists(".\\save.json").unwrap() {
-        match fs::write(".\\save.json", "{\"g_played\": 0, \"g_won\": 0, \"total_playtime\": 0, \"total_clicks\": 0}") {
+    let save_path = std::env::current_exe().unwrap().parent().unwrap().to_str().unwrap().to_owned();
+    if !fs::exists(format!("{}\\save.json", save_path)).unwrap() {
+        match fs::write(format!("{}\\save.json", save_path), "{\"g_played\": 0, \"g_won\": 0, \"total_playtime\": 0, \"total_clicks\": 0}") {
             Ok(_) => {}
             Err(e) => {
                 println!("Error creating save file: {}", e);
@@ -803,7 +804,8 @@ impl Save {
     /// 
     fn read_save() -> Save {
         // Get file contents
-        let file = fs::read_to_string(".\\save.json");
+        let save_path = std::env::current_exe().unwrap().parent().unwrap().to_str().unwrap().to_owned();
+        let file = fs::read_to_string(format!("{}\\save.json", save_path));
         match file {
             Ok(_) => {}
             Err(e) => { 
@@ -842,7 +844,8 @@ impl Save {
         let new_save_data = serde_json::to_string(&self);
         match new_save_data {
             Ok(s) => {
-                fs::write(".\\save.json", s).ok();
+                let save_path = std::env::current_exe().unwrap().parent().unwrap().to_str().unwrap().to_owned();
+                fs::write(format!("{}\\save.json", save_path), s).ok();
             }
             Err(_) => {
                 // Could not write save data

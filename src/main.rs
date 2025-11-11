@@ -233,23 +233,23 @@ impl MinesweeperGame {
         print!("{}[2J", 27 as char);
         println!("q - check | w - flag | r - reset | m - menu");
         println!("FLAGS LEFT: {}", self.m_count);
-        print!("╔");
+        print!("\x1b[{};{}m╔", self.save.border_fg, self.save.border_bg);
         for _ in 0..(self.width*3) {
             print!("═");
         }
-        print!("╗\n");
+        print!("╗\x1b[0m\n");
         for _ in 0..self.height {
-            print!("║");
+            print!("\x1b[{};{}m║\x1b[0m", self.save.border_fg, self.save.border_bg);
             for _ in 0..(self.width) {
-                print!("\x1b[0;37;100m[{}]\x1b[0m", self.tile_char);
+                print!("\x1b[{};{}m[{}]\x1b[0m", self.save.inner_fg, self.save.inner_bg, self.tile_char);
             }
-            print!("║\n");
+            print!("\x1b[{};{}m║\x1b[0m\n", self.save.border_fg, self.save.border_bg);
         }
-        print!("╚");
+        print!("\x1b[{};{}m╚", self.save.border_fg, self.save.border_bg);
         for _ in 0..(self.width*3) {
             print!("═");
         }
-        print!("╝\n");
+        print!("╝\x1b[0m\n");
     }
     ///
     /// Prints the mine count at a position with a color based on the count
@@ -641,6 +641,9 @@ impl MinesweeperGame {
 
 // Game controller
 impl MinesweeperGame {
+    ///
+    /// Handles the vanilla minesweeper gamemode
+    /// 
     fn run_game(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
         // Create game object
         execute!(std::io::stdout(), Show).ok();
@@ -685,7 +688,26 @@ impl MinesweeperGame {
         if msg.reset {
             MinesweeperGame::run_game(width, height, mine_count)?;
         }
+        // Clean up
+        execute!(std::io::stdout(), Hide).ok();
         Ok(())
+    }
+    ///
+    /// Handles my custom quality-of-life gamemode which checks all 4 corners of the board.
+    /// This will keep going until it finds a board state that has all 4 clear.
+    /// NOTICE: This WILL affect your win/loss ratio. This is intentional. Some of us have had to grind our 4 corner starts manually for years.
+    /// 
+    #[allow(unused)]
+    fn _run_game_qol(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
+        todo!()
+    }
+    ///
+    /// Handles the no-guessing gamemode, which will mark a space on the board with 0 surrounding mines and
+    /// make the user check that space to start.
+    /// 
+    #[allow(unused)]
+    fn _run_game_ng(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
+        todo!()
     }
 }
 
@@ -716,7 +738,11 @@ fn main() -> Result<(), std::io::Error> {
     // Check for save file and make sure it exists
     let save_path = std::env::current_exe().unwrap().parent().unwrap().to_str().unwrap().to_owned();
     if !fs::exists(format!("{}\\save.json", save_path)).unwrap() {
-        match fs::write(format!("{}\\save.json", save_path), "{\"g_played\": 0, \"g_won\": 0, \"total_playtime\": 0, \"total_clicks\": 0}") {
+        match fs::write(format!("{}\\save.json", save_path), 
+        "{\"g_played\": 0, \"g_won\": 0, \"total_playtime\": 0, \"total_clicks\": 0,
+        \"inner_fg\": \"37\", \"inner_bg\": \"100\", \"border_fg\": \"37\", \"border_bg\": \"40\",
+        \"gamemode\": 0}"
+    )   {
             Ok(_) => {}
             Err(e) => {
                 println!("Error creating save file: {}", e);
@@ -789,16 +815,30 @@ fn main() -> Result<(), std::io::Error> {
         }
     }
     execute!(std::io::stdout(), MoveTo(0,0)).ok();
+    execute!(std::io::stdout(), Show).ok();
     print!("{}[2J", 27 as char);
     Ok(())
 }
 
 #[derive(Serialize, Deserialize)]
 struct Save {
+    // Statistics
     g_played: u32,       // Number of games played
     g_won: u32,          // Number of games won
     total_playtime: u64, // Number of seconds of game played
     total_clicks: u64,   // Total number of "check" / "chord" actions all time. This one is for fun
+    // Settings
+    // (ANSI color codes)
+    border_fg: String,       // Foreground color of map borders
+    border_bg: String,       // Background color of map borders
+    inner_fg: String,        // Foreground color of mine character and surrounding brackets
+    inner_bg: String,        // Background color of inner 
+    m_count_fg: Vec<String>, // Foreground color for all 8 mine counts (0 = blank)
+    // (Gamemode)
+    // 0 - Vanilla
+    // 1 - CMD's QOL
+    // 2 - No Guessing
+    gamemode: u8
 }
 
 impl Save {

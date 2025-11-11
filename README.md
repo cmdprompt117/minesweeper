@@ -4,7 +4,7 @@ Rust implementation of minesweeper on the terminal
 ## Roadmap
 
 - ~~Save files for data like win ratio, avg. game time per mode, settings~~
-- View save information (display by default on menu?)
+- ~~View save information (display by default on menu?)~~
 - Settings (color choices, custom flag/mine/tile characters, border chars, etc.)
 - QOL modes (check four corners until good start, no guessing, etc.)
 - UI overhaul (ratatui?)

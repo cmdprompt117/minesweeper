@@ -704,6 +704,9 @@ fn do_splash_text() {
     println!("3. Expert (30x16, 99 mines)");
     println!("4. Custom");
     println!("5. Exit");
+
+    let save = Save::read_save();
+    println!("\x1b[0;90m\nGames Played: {}\nGames Won: {}\nWin %: {}\nMinutes played: {}\nClicks: {}\x1b[0m", save.g_played, save.g_won, (save.g_won as f32 / save.g_played as f32) * 100., save.total_playtime / 60, save.total_clicks);
 }
 
 fn main() -> Result<(), std::io::Error> {

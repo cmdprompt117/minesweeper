@@ -30,12 +30,8 @@ struct MinesweeperGame {
     clicks: u64,     // Number of checks / chords done in the game
 
     // Records
-    save: Save, // Contains stats saved in save.json. Updated and saved after a game
-
-    // Visual
-    flag_char: char,
-    mine_char: char,
-    tile_char: char,
+    // Contains stats and visual info, stored in `save.json`
+    save: Save, 
 
     // Maps
     mine_map: Vec<Vec<i16>>,      // 0 = no mine, 1 = mine
@@ -96,10 +92,6 @@ impl MinesweeperGame {
             clicks: 0,
 
             save: Save::read_save(),
-
-            flag_char: '󰈿',
-            mine_char: '󰷚',
-            tile_char: '󰆢',
 
             mine_map: vec![vec![0; width as usize]; height as usize],
             flag_map: vec![vec![0; width as usize]; height as usize],
@@ -180,9 +172,9 @@ impl MinesweeperGame {
             print!("║");
             for j in 0..(self.width) {
                 if self.mine_map[i as usize][j as usize] == 1 {
-                    print!("[{}]", self.mine_char);
+                    print!("[{}]", self.save.mine_char);
                 } else {
-                    print!("[{}]", self.tile_char);
+                    print!("[{}]", self.save.tile_char);
                 }
             }
             print!("║\n");
@@ -211,7 +203,7 @@ impl MinesweeperGame {
             print!("║");
             for j in 0..(self.width) {
                 if self.mine_map[i as usize][j as usize] == 1 {
-                    print!("[{}]", self.mine_char);
+                    print!("[{}]", self.save.mine_char);
                 } else {
                     print!("[{}]", self.m_count_map[i as usize][j as usize]);
                 }
@@ -241,7 +233,7 @@ impl MinesweeperGame {
         for _ in 0..self.height {
             print!("\x1b[{};{}m║\x1b[0m", self.save.border_fg, self.save.border_bg);
             for _ in 0..(self.width) {
-                print!("\x1b[{};{}m[{}]\x1b[0m", self.save.inner_fg, self.save.inner_bg, self.tile_char);
+                print!("\x1b[{};{}m[{}]\x1b[0m", self.save.inner_fg, self.save.inner_bg, self.save.tile_char);
             }
             print!("\x1b[{};{}m║\x1b[0m\n", self.save.border_fg, self.save.border_bg);
         }
@@ -250,39 +242,6 @@ impl MinesweeperGame {
             print!("═");
         }
         print!("╝\x1b[0m\n");
-    }
-    ///
-    /// Prints the mine count at a position with a color based on the count
-    /// 
-    fn print_colored_count(&self, mine_count: i16) {
-        match mine_count {
-            1 => {
-                print!("\x1b[1;34m");
-            }
-            2 => {
-                print!("\x1b[1;32m");
-            }
-            3 => {
-                print!("\x1b[1;31m");
-            }
-            4 => {
-                print!("\x1b[1;35m");
-            }
-            5 => {
-                print!("\x1b[1;33m");
-            }
-            6 => {
-                print!("\x1b[1;36m");
-            }
-            7 => {
-                print!("\x1b[1;37m");
-            }
-            8 => {
-                print!("\x1b[1;30m");
-            }
-            _ => {} // Impossible cases
-        }
-        print!("{}\x1b[0m", mine_count);
     }
     ///
     /// Used to visually update the colors of an entire square after checking
@@ -298,14 +257,14 @@ impl MinesweeperGame {
             print!("\x1b[0;30m[ ]\x1b[0m");
         } else if mine_count == -1 {
             // Mine
-            print!("\x1b[0;30;100m[{}]\x1b[0m", self.mine_char);
+            print!("\x1b[{};100m[{}]\x1b[0m", self.save.inner_highlight, self.save.mine_char);
         } else if mine_count == -2 {
             // Flag
-            print!("\x1b[0;37;100m[\x1b[0;100m{}\x1b[0;37;100m]\x1b[0m", self.flag_char);
+            print!("\x1b[{};100m[\x1b[{}m{}\x1b[{};100m]\x1b[0m", self.save.inner_fg, self.save.inner_highlight, self.save.flag_char, self.save.inner_fg);
         } else {
             // Space with mine count
             print!("\x1b[0;30m[\x1b[0m");
-            self.print_colored_count(mine_count);
+            print!("\x1b[1;{}m{}\x1b[0m", self.save.m_count_fg[(mine_count - 1) as usize], mine_count);
             print!("\x1b[0;30m]\x1b[0m");
         }
     }
@@ -419,13 +378,13 @@ impl MinesweeperGame {
                     if self.uncovered_map[self.y as usize][self.x as usize] == 0 {
                         if self.flag_map[self.y as usize][self.x as usize] == 0 && self.f_count < (self.m_count) {
                             self.flag_map[self.y as usize][self.x as usize] = 1;
-                            print!("\x1b[0;100m{}\x1b[0m", self.flag_char);
+                            print!("\x1b[{};{}m{}\x1b[0m", self.save.inner_highlight, self.save.inner_bg, self.save.flag_char);
                             self.f_count += 1;
                             self.visual_update_f_count();
                             self.position_cursor(self.x, self.y);
                         } else if self.flag_map[self.y as usize][self.x as usize] == 1 {
                             self.flag_map[self.y as usize][self.x as usize] = 0;
-                            print!("\x1b[0;37;100m{}\x1b[0m", self.tile_char);
+                            print!("\x1b[{};{}m{}\x1b[0m", self.save.inner_fg, self.save.inner_bg, self.save.tile_char);
                             self.f_count -= 1;
                             self.visual_update_f_count();
                             self.position_cursor(self.x, self.y);
@@ -741,6 +700,8 @@ fn main() -> Result<(), std::io::Error> {
         match fs::write(format!("{}\\save.json", save_path), 
         "{\"g_played\": 0, \"g_won\": 0, \"total_playtime\": 0, \"total_clicks\": 0,
         \"inner_fg\": \"37\", \"inner_bg\": \"100\", \"border_fg\": \"37\", \"border_bg\": \"40\",
+        \"inner_highlight\": \"97\", \"flag_char\": \"󰈿\", \"mine_char\": \"󰷚\", \"tile_char\": \"󰆢\",
+        \"m_count_fg\": [\"34\", \"32\", \"31\", \"35\", \"33\", \"36\", \"37\", \"30\"],
         \"gamemode\": 0}"
     )   {
             Ok(_) => {}
@@ -832,8 +793,13 @@ struct Save {
     border_fg: String,       // Foreground color of map borders
     border_bg: String,       // Background color of map borders
     inner_fg: String,        // Foreground color of mine character and surrounding brackets
+    inner_highlight: String, // Foreground color for placed flags and mines exposed after loss
     inner_bg: String,        // Background color of inner 
     m_count_fg: Vec<String>, // Foreground color for all 8 mine counts (0 = blank)
+    // (Characters)
+    mine_char: String,
+    flag_char: String,
+    tile_char: String,
     // (Gamemode)
     // 0 - Vanilla
     // 1 - CMD's QOL

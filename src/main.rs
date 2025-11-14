@@ -101,6 +101,7 @@ impl MinesweeperGame {
     }
     ///
     /// Populate the mines on the board by updating `mine_map`
+    /// This function behaves differently based on the selected gamemode
     /// 
     fn populate_mine_map(&mut self) {
         for _ in 0..self.m_count {
@@ -108,11 +109,28 @@ impl MinesweeperGame {
             loop {
                 let rand_y = rng.random_range(0..self.height);
                 let rand_x = rng.random_range(0..self.width);
-                // !(self.x == rand_x && self.y == rand_y)
-                // Ensures that when generating the board we do not put a mine where the player chose to start 
+                // First check - don't double up on mine or place where player selected
                 if self.mine_map[rand_y as usize][rand_x as usize] != 1 && !(self.x == rand_x && self.y == rand_y) {
-                    self.mine_map[rand_y as usize][rand_x as usize] = 1;
-                    break;
+                    // Second check based on gamemode
+                    match self.save.gamemode {
+                        0 | 2 => {
+                            // Normal gamemode or No guessing - do nothing special
+                            self.mine_map[rand_y as usize][rand_x as usize] = 1;
+                            break;
+                        }
+                        1 => {
+                            // QOL gamemode - guarantee no corners
+                            if !((rand_x == 0 || rand_x == self.width - 1) && (rand_y == 0 || rand_y == self.height - 1)) {
+                                self.mine_map[rand_y as usize][rand_x as usize] = 1;
+                                break;
+                            }
+                        }
+                        _ => {
+                            // Should not occur
+                            println!("How did we get here?");
+                            std::process::exit(1);
+                        }
+                    }
                 }
             }
         }
@@ -132,16 +150,7 @@ impl MinesweeperGame {
     /// Get the number of mines surrounding the given position
     /// 
     fn get_mine_count(&mut self, x: i16, y: i16) -> i16 {
-        let surrounding = vec![
-            (x - 1, y - 1), // Top left
-            (x, y - 1),     // Top
-            (x + 1, y - 1), // Top right
-            (x - 1, y),     // Left
-            (x + 1, y),     // Right
-            (x - 1, y + 1), // Bottom left
-            (x, y + 1),     // Bottom
-            (x + 1, y + 1)  // Bottom right
-        ];
+        let surrounding = self.get_surrounding(x, y);
         let mut mine_count = 0;
         for coord in surrounding {
             if coord.0 >= 0 && coord.0 < self.width && coord.1 >= 0 && coord.1 < self.height {
@@ -261,6 +270,9 @@ impl MinesweeperGame {
         } else if mine_count == -2 {
             // Flag
             print!("\x1b[{};100m[\x1b[{}m{}\x1b[{};100m]\x1b[0m", self.save.inner_fg, self.save.inner_highlight, self.save.flag_char, self.save.inner_fg);
+        } else if mine_count == -3 {
+            // No guessing - place X on start location
+            print!("\x1b[{};100m[X]\x1b[0m", self.save.inner_highlight);
         } else {
             // Space with mine count
             print!("\x1b[0;30m[\x1b[0m");
@@ -297,7 +309,7 @@ impl MinesweeperGame {
     ///
     /// Handle the start of the game, in which the player has to get a check in before the mines can generate, in order to avoid random start losses 
     /// 
-    fn handle_start(&mut self, key_code: KeyCode) {
+    fn handle_start(&mut self, key_code: KeyCode, ng_start: Option<(i16, i16)>) {
         match key_code {
             KeyCode::Up => {
                 if self.y > 0 {
@@ -324,10 +336,25 @@ impl MinesweeperGame {
                 }
             }
             KeyCode::Char('q') => {
-                // Generate the board, update the game state, and check
-                self.populate_mine_map();
-                self.populate_m_count_map();
-                self.state = MSGState::Running;
+                match self.save.gamemode {
+                    0 | 1 => { // Normal gamemodes
+                        // Generate the board, update the game state
+                        self.populate_mine_map();
+                        self.populate_m_count_map();
+                        self.state = MSGState::Running;
+                    }
+                    2 => { // No guessing mode
+                        // Ensure we are on the X
+                        let start = ng_start.unwrap();
+                        if self.x == start.0 && self.y == start.1 {
+                            self.state = MSGState::Running;
+                        }
+                    }
+                    _ => {
+                        // This should not happen
+                        std::process::exit(1);
+                    }
+                }
             }
             _ => {}
         }
@@ -607,6 +634,11 @@ impl MinesweeperGame {
         // Create game object
         execute!(std::io::stdout(), Show).ok();
         let mut msg = MinesweeperGame::new(width, height, mine_count);
+        // Break out into no guessing mode if need be
+        if msg.save.gamemode == 2 {
+            let res = MinesweeperGame::run_game_ng(width, height, mine_count);
+            return res;
+        }
         // Display board size
         msg.print_board_normal();
         // Position the cursor
@@ -617,7 +649,7 @@ impl MinesweeperGame {
                 match event::read().unwrap() {
                     Event::Key(key_event) => {
                         if key_event.kind == KeyEventKind::Press {
-                            msg.handle_start(key_event.code);
+                            msg.handle_start(key_event.code, None);
                         }
                     }
                     _ => {}
@@ -652,21 +684,67 @@ impl MinesweeperGame {
         Ok(())
     }
     ///
-    /// Handles my custom quality-of-life gamemode which checks all 4 corners of the board.
-    /// This will keep going until it finds a board state that has all 4 clear.
-    /// NOTICE: This WILL affect your win/loss ratio. This is intentional. Some of us have had to grind our 4 corner starts manually for years.
+    /// Handles the no-guessing mode
     /// 
-    #[allow(unused)]
-    fn _run_game_qol(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
-        todo!()
-    }
-    ///
-    /// Handles the no-guessing gamemode, which will mark a space on the board with 0 surrounding mines and
-    /// make the user check that space to start.
-    /// 
-    #[allow(unused)]
-    fn _run_game_ng(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
-        todo!()
+    fn run_game_ng(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
+        // Create game object
+        execute!(std::io::stdout(), Show).ok();
+        println!("Creating game object"); // DEBUG
+        let mut msg = MinesweeperGame::new(width, height, mine_count);
+        println!("Generating mine map"); // DEBUG
+        // Generate the mines and get the start pos
+        msg.populate_mine_map();
+        println!("Generating mine count map"); // DEBUG
+        msg.populate_m_count_map();
+        msg.print_board_normal();
+        let mut rng = rand::rng();
+        loop {
+            let rand_y = rng.random_range(0..msg.height);
+            let rand_x = rng.random_range(0..msg.width);
+            if msg.m_count_map[rand_y as usize][rand_x as usize] == 0 && msg.mine_map[rand_y as usize][rand_x as usize] == 0 {
+                let start = (rand_x, rand_y);
+                // Once we have found the valid start, print the X
+                msg.print_board_normal();
+                msg.visual_update_space(start.0, start.1, -3);
+                msg.position_cursor(msg.x, msg.y);
+                // Then handle the start
+                while msg.state == MSGState::Starting {
+                    if event::poll(Duration::from_millis(250))? {
+                        match event::read().unwrap() {
+                            Event::Key(key_event) => {
+                                if key_event.kind == KeyEventKind::Press {
+                                    msg.handle_start(key_event.code, Some(start));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                break;
+            }
+        }
+        // Now handle the rest as normal
+        msg.check();
+        // Main game loop
+        while msg.state != MSGState::Done {
+            if event::poll(Duration::from_millis(250))? {
+                match event::read().unwrap() {
+                    Event::Key(key_event) => {
+                        if key_event.kind == KeyEventKind::Press {
+                            msg.handle_input(key_event.code);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // Reset if need be
+        if msg.reset {
+            MinesweeperGame::run_game(width, height, mine_count)?;
+        }
+        // Clean up
+        execute!(std::io::stdout(), Hide).ok();
+        Ok(())
     }
 }
 

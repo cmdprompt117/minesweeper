@@ -7,13 +7,14 @@ Rust implementation of minesweeper on the terminal
 - ~~View save information (display by default on menu?)~~
 - ~~Settings (color choices, custom flag/mine/tile characters, border chars, etc.)~~
 - ~~QOL modes (check four corners until good start, no guessing, etc.)~~
-- UI overhaul (including settings menu) using ratatui
+- Add settings menu
 
 ### Potential later additions
 
 Any ideas below this header are complete maybes.
 
 - Challenges, levels, XP
+- UI Overhaul (ratatui)
 - "AI" mode: Start up some games and watch an algorithm solve them. 
 - Step-through mode for the algorithm solving to watch how it goes slowly for learning
 

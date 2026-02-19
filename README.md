@@ -1,5 +1,5 @@
 # minesweeper
-Rust implementation of minesweeper on the terminal
+An implementation of minesweeper on the terminal
 
 ## Roadmap
 

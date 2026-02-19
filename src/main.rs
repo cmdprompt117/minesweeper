@@ -3,6 +3,7 @@ use crossterm::{
         MoveTo, SetCursorStyle, Hide, Show
     },
     event::{self, Event, KeyCode, KeyEventKind},
+    terminal::{disable_raw_mode, enable_raw_mode},
     execute
 };
 use rand::Rng;
@@ -127,7 +128,7 @@ impl MinesweeperGame {
                         }
                         _ => {
                             // Should not occur
-                            println!("How did we get here?");
+                            print!("How did we get here?\r\n");
                             std::process::exit(1);
                         }
                     }
@@ -176,7 +177,7 @@ impl MinesweeperGame {
         for _ in 0..(self.width*3) {
             print!("═");
         }
-        print!("╗\n");
+        print!("╗\r\n");
         for i in 0..self.height {
             print!("║");
             for j in 0..(self.width) {
@@ -186,13 +187,13 @@ impl MinesweeperGame {
                     print!("[{}]", self.save.tile_char);
                 }
             }
-            print!("║\n");
+            print!("║\r\n");
         }
         print!("╚");
         for _ in 0..(self.width*3) {
             print!("═");
         }
-        print!("╝\n");
+        print!("╝\r\n");
     }
     ///
     /// Prints the board with the calculated neighboring mine count of each position.
@@ -207,7 +208,7 @@ impl MinesweeperGame {
         for _ in 0..(self.width*3) {
             print!("═");
         }
-        print!("╗\n");
+        print!("╗\r\n");
         for i in 0..self.height {
             print!("║");
             for j in 0..(self.width) {
@@ -217,13 +218,13 @@ impl MinesweeperGame {
                     print!("[{}]", self.m_count_map[i as usize][j as usize]);
                 }
             }
-            print!("║\n");
+            print!("║\r\n");
         }
         print!("╚");
         for _ in 0..(self.width*3) {
             print!("═");
         }
-        print!("╝\n");
+        print!("╝\r\n");
     }
     ///
     /// Prints a blank board with no visual information.
@@ -232,25 +233,25 @@ impl MinesweeperGame {
     fn print_board_normal(&self) {
         execute!(std::io::stdout(), MoveTo(0, 0)).ok();
         print!("{}[2J", 27 as char);
-        println!("q - check | w - flag | r - reset | m - menu");
-        println!("FLAGS LEFT: {}", self.m_count);
+        print!("q - check | w - flag | r - reset | m - menu\r\n");
+        print!("FLAGS LEFT: {}\r\n", self.m_count);
         print!("\x1b[{};{}m╔", self.save.border_fg, self.save.border_bg);
         for _ in 0..(self.width*3) {
             print!("═");
         }
-        print!("╗\x1b[0m\n");
+        print!("╗\x1b[0m\r\n");
         for _ in 0..self.height {
             print!("\x1b[{};{}m║\x1b[0m", self.save.border_fg, self.save.border_bg);
             for _ in 0..(self.width) {
                 print!("\x1b[{};{}m[{}]\x1b[0m", self.save.inner_fg, self.save.inner_bg, self.save.tile_char);
             }
-            print!("\x1b[{};{}m║\x1b[0m\n", self.save.border_fg, self.save.border_bg);
+            print!("\x1b[{};{}m║\x1b[0m\r\n", self.save.border_fg, self.save.border_bg);
         }
         print!("\x1b[{};{}m╚", self.save.border_fg, self.save.border_bg);
         for _ in 0..(self.width*3) {
             print!("═");
         }
-        print!("╝\x1b[0m\n");
+        print!("╝\x1b[0m\r\n");
     }
     ///
     /// Used to visually update the colors of an entire square after checking
@@ -442,8 +443,8 @@ impl MinesweeperGame {
             self.state = MSGState::Loss;
             execute!(std::io::stdout(), MoveTo(0, (self.height + 4) as u16)).ok();
             execute!(std::io::stdout(), Hide).ok();
-            println!("Sorry! You lose.");
-            println!("Game time: {}s", self.time.elapsed().as_secs());
+            print!("Sorry! You lose.\r\n");
+            print!("Game time: {}s\r\n", self.time.elapsed().as_secs());
             self.show_mines();
             // Update save data
             self.save.update_save(false, self.time.elapsed().as_secs(), self.clicks);
@@ -616,8 +617,8 @@ impl MinesweeperGame {
             // TODO reconfigure this 4 to be a non-magic number
             execute!(std::io::stdout(), MoveTo(0, (self.height + 4) as u16)).ok();
             execute!(std::io::stdout(), Hide).ok();
-            println!("Congrats! You won!");
-            println!("Game time: {}s", self.time.elapsed().as_secs());
+            print!("Congrats! You won!\r\n");
+            print!("Game time: {}s\r\n", self.time.elapsed().as_secs());
             // Update save data
             self.save.update_save(true, self.time.elapsed().as_secs(), self.clicks);
             self.save.write_save();
@@ -633,6 +634,7 @@ impl MinesweeperGame {
     fn run_game(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
         // Create game object
         execute!(std::io::stdout(), Show).ok();
+        let _ = enable_raw_mode();
         let mut msg = MinesweeperGame::new(width, height, mine_count);
         // Break out into no guessing mode if need be
         if msg.save.gamemode == 2 {
@@ -681,6 +683,7 @@ impl MinesweeperGame {
         }
         // Clean up
         execute!(std::io::stdout(), Hide).ok();
+        let _ = disable_raw_mode();
         Ok(())
     }
     ///
@@ -689,12 +692,12 @@ impl MinesweeperGame {
     fn run_game_ng(width: i16, height: i16, mine_count: i16) -> Result<(), std::io::Error> {
         // Create game object
         execute!(std::io::stdout(), Show).ok();
-        println!("Creating game object"); // DEBUG
+        print!("Creating game object\r\n"); // DEBUG
         let mut msg = MinesweeperGame::new(width, height, mine_count);
-        println!("Generating mine map"); // DEBUG
+        print!("Generating mine map\r\n"); // DEBUG
         // Generate the mines and get the start pos
         msg.populate_mine_map();
-        println!("Generating mine count map"); // DEBUG
+        print!("Generating mine count map\r\n"); // DEBUG
         msg.populate_m_count_map();
         msg.print_board_normal();
         let mut rng = rand::rng();
@@ -752,20 +755,20 @@ fn do_splash_text() {
     //? Shoutout Patrick Gillespie: https://patorjk.com/software/taag
     execute!(std::io::stdout(), MoveTo(0, 0)).ok();
     print!("{}[2J", 27 as char);
-    println!(" _____    _____               _____                           ");
-    println!("| | | |  |_   _|___ ___ _____|   __|_ _ _ ___ ___ ___ ___ ___ ");
-    println!("|-   -|    | | | -_|  _|     |__   | | | | -_| -_| . | -_|  _|");
-    println!("|_|_|_|    |_| |___|_| |_|_|_|_____|_____|___|___|  _|___|_|  ");
-    println!("                                                 |_|          \n");
+    print!(" _____    _____               _____                           \r\n");
+    print!("| | | |  |_   _|___ ___ _____|   __|_ _ _ ___ ___ ___ ___ ___ \r\n");
+    print!("|-   -|    | | | -_|  _|     |__   | | | | -_| -_| . | -_|  _|\r\n");
+    print!("|_|_|_|    |_| |___|_| |_|_|_|_____|_____|___|___|  _|___|_|  \r\n");
+    print!("                                                 |_|          \r\n\r\n");
 
-    println!("1. Beginner (9x9, 10 mines)");
-    println!("2. Intermediate (16x16, 40 mines)");
-    println!("3. Expert (30x16, 99 mines)");
-    println!("4. Custom");
-    println!("5. Exit");
+    print!("1. Beginner (9x9, 10 mines)\r\n");
+    print!("2. Intermediate (16x16, 40 mines)\r\n");
+    print!("3. Expert (30x16, 99 mines)\r\n");
+    print!("4. Custom\r\n");
+    print!("5. Exit\r\n");
 
     let save = Save::read_save();
-    println!("\x1b[0;90m\nGames Played: {}\nGames Won: {}\nWin %: {}\nMinutes played: {}\nClicks: {}\x1b[0m", save.g_played, save.g_won, (save.g_won as f32 / save.g_played as f32) * 100., save.total_playtime / 60, save.total_clicks);
+    print!("\x1b[0;90m\r\nGames Played: {}\r\nGames Won: {}\r\nWin %: {}\r\nMinutes played: {}\r\nClicks: {}\x1b[0m\r\n", save.g_played, save.g_won, (save.g_won as f32 / save.g_played as f32) * 100., save.total_playtime / 60, save.total_clicks);
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -784,7 +787,7 @@ fn main() -> Result<(), std::io::Error> {
     )   {
             Ok(_) => {}
             Err(e) => {
-                println!("Error creating save file: {}", e);
+                print!("Error creating save file: {}\r\n", e);
                 return Ok(())
             }
         }
@@ -812,7 +815,7 @@ fn main() -> Result<(), std::io::Error> {
                                 let mut width: String = String::new();
                                 let mut height: String = String::new();
                                 let mut mines: String = String::new();
-                                print!("\n> Width: "); std::io::stdout().flush()?;
+                                print!("\r\n> Width: "); std::io::stdout().flush()?;
                                 std::io::stdin().read_line(&mut width)?;
                                 print!("> Height: "); std::io::stdout().flush()?;
                                 std::io::stdin().read_line(&mut height)?;
@@ -823,18 +826,18 @@ fn main() -> Result<(), std::io::Error> {
                                 let height_n = height.trim().parse::<i16>();
                                 let mines_n = mines.trim().parse::<i16>();
                                 if width_n.is_err() || height_n.is_err() || mines_n.is_err() {
-                                    println!("\nX Error while reading input");
-                                    println!("{:?}\n{:?}\n{:?}\n", width_n, height_n, mines_n);
+                                    print!("\r\nX Error while reading input\r\n");
+                                    print!("{:?}\r\n{:?}\r\n{:?}\r\n\r\n", width_n, height_n, mines_n);
                                     continue;
                                 }
                                 if width_n.clone().unwrap() < 0 || height_n.clone().unwrap() < 0 || mines_n.clone().unwrap() < 0 {
-                                    println!("\nX Please enter valid positive numbers");
+                                    print!("\r\nX Please enter valid positive numbers\r\n");
                                     continue;
                                 }
                                 // Check (by numerical constraints) if it is valid
                                 let space_n = width_n.clone().unwrap() * height_n.clone().unwrap();
                                 if mines_n.clone().unwrap() >= space_n - 1 {
-                                    println!("\nX Too many mines for the given space count ({} mines in {} spaces)", mines_n.clone().unwrap(), space_n);
+                                    print!("\r\nX Too many mines for the given space count ({} mines in {} spaces)\r\n", mines_n.clone().unwrap(), space_n);
                                     continue;
                                 }
 
@@ -896,7 +899,7 @@ impl Save {
         match file {
             Ok(_) => {}
             Err(e) => { 
-                println!("Error while opening save file: {}", e);
+                print!("Error while opening save file: {}\r\n", e);
                 std::process::exit(1);
             }
         }
@@ -906,7 +909,7 @@ impl Save {
                 return s;
             }
             Err(e) => {
-                println!("Error while opening save file: {}", e);
+                print!("Error while opening save file: {}\r\n", e);
                 std::process::exit(1);
             }
         }
